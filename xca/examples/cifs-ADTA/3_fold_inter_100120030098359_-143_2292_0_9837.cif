@@ -1,0 +1,80 @@
+
+#######################################################################
+#
+#                 Cambridge Crystallographic Data Centre
+#                                CCDC 
+#
+#######################################################################
+#
+# If this CIF has been generated from an entry in the Cambridge 
+# Structural Database, then it will include bibliographic, chemical, 
+# crystal, experimental, refinement or atomic coordinate data resulting 
+# from the CCDC's data processing and validation procedures.
+#
+#######################################################################
+
+data_100120030098359
+_symmetry_cell_setting           monoclinic
+_symmetry_space_group_name_H-M   'C c'
+_symmetry_Int_Tables_number      9
+_space_group_name_Hall           'C -2yc'
+loop_
+_symmetry_equiv_pos_site_id
+_symmetry_equiv_pos_as_xyz
+1 x,y,z
+2 x,-y,1/2+z
+3 1/2+x,1/2+y,z
+4 1/2+x,1/2-y,1/2+z
+_cell_length_a                   7.7615
+_cell_length_b                   23.3102
+_cell_length_c                   12.2836
+_cell_angle_alpha                90.0
+_cell_angle_beta                 71.5832
+_cell_angle_gamma                90.0
+_cell_volume                     2108.55
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.260235 0.874975 0.305556
+C2 C 0.337189 0.913093 0.38221
+C3 C 0.487899 0.95069 0.306971
+C4 C 0.183742 0.798568 0.458486
+C5 C 0.106571 0.836888 0.382247
+C6 C 0.0310808 0.799271 0.307049
+C7 C 0.107333 0.875025 0.611316
+C8 C 0.260963 0.836911 0.534669
+C9 C 0.336432 0.799313 0.609904
+C10 C 0.183794 0.951439 0.458384
+C11 C 0.0303877 0.913114 0.53462
+C12 C -0.120301 0.950732 0.609816
+C13 C 0.412916 0.875005 0.458444
+C14 C -0.0453603 0.875005 0.458425
+O1 O 0.427645 0.985261 0.23779
+O2 O 0.64337 0.951108 0.306141
+O3 O 0.160498 0.764685 0.2379
+O4 O -0.123559 0.798856 0.306214
+O5 O 0.206996 0.764745 0.679091
+O6 O 0.491079 0.79889 0.610724
+O7 O -0.0600332 0.985318 0.678967
+O8 O -0.275775 0.951148 0.610649
+H1 H 0.470749 0.901489 0.511386
+H2 H 0.367767 0.84804 0.250411
+H3 H 0.207911 0.901893 0.250356
+H4 H 0.531251 1.00754 0.193218
+H5 H -0.103167 0.901477 0.405453
+H6 H 0.0768597 0.770992 0.512359
+H7 H 0.290596 0.770974 0.404644
+H8 H 0.101462 0.742399 0.193333
+H9 H 0.523699 0.848525 0.405504
+H10 H 0.159695 0.901959 0.666476
+H11 H -0.00019748 0.848105 0.666502
+H12 H 0.266034 0.742461 0.723659
+H13 H -0.156167 0.84854 0.511385
+H14 H 0.130775 0.979012 0.404513
+H15 H 0.236804 0.979035 0.512225
+H16 H -0.163638 1.0076 0.723533
+
+#END
