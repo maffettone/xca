@@ -186,12 +186,12 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     if path.is_dir():
         for idx in range(n_profiles):
-            np.save(path / "{}.npy".format(idx), data[:, idx])
+            np.save(str(path / "{}.npy".format(idx)), data[:, idx])
     elif path.suffix == '.npy':
-        np.save(output_path, data)
+        np.save(str(output_path), data)
     elif path.suffix == '.csv':
         cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
-        np.savetxt(output_path, data, delimiter=',', header=",".join(cols), comments='')
+        np.savetxt(str(output_path), data, delimiter=',', header=",".join(cols), comments='')
     else:
         raise ValueError("Path {} is invalid (doesn't exist or improper extension)".format(path))
     return
