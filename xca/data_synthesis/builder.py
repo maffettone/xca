@@ -29,7 +29,7 @@ default_params = {
     'W': 0.1,
     'X': 0.1,
     'Y': 0.1,
-    'Z': 0.1,
+    'Z': 0.0,
     # Background
     'bkg_6': 0.,
     'bkg_5': 0.,
