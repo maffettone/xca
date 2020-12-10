@@ -40,6 +40,8 @@ default_params = {
     'bkg_0': 0.,
     'bkg_-1': 0.,
     'bkg_-2': 0.,
+    'bkg_ea': 0.,
+    'bkg_eb': 0.,
     # Noise
     'noise_std': 0,
     # Extras`

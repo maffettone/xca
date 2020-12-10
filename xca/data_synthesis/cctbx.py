@@ -287,6 +287,9 @@ def apply_background(x, y, params=None):
         bkg_1 : 1th term polynomial coefficient
         bkg_0 : constant term in polynomial
         bkg_-1: 1/x term polynomial coefficient
+        bkg_-1: 1/x^2 polynomial coefficient
+        bkg_ea: A*e^(bx), a factor in exponential
+        bkg_eb: A*e^(bx), C term in coeffcient
     """
     y += (params['bkg_6'] * x ** 6 +
           params['bkg_5'] * x ** 5 +
@@ -296,8 +299,9 @@ def apply_background(x, y, params=None):
           params['bkg_1'] * x ** 1 +
           params['bkg_0'] +
           params['bkg_-1'] * x ** -1 +
-          params['bkg_-2'] * x ** -2)
-
+          params['bkg_-2'] * x ** -2 +
+          params['bkg_ea']*np.exp(params['bkg_eb'] * x)
+          )
     return y
 
 
