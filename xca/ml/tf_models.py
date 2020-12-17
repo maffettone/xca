@@ -186,4 +186,4 @@ def CNN_training(params):
                 f.write(str(tensor.numpy()))
                 f.write('\n')
 
-    return results
+    return results, CNN
