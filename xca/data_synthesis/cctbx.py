@@ -12,7 +12,7 @@ import iotbx.cif
 
 def load_cif(fname):
     data = {}
-    struct = iotbx.cif.reader(file_path=str(fname)).build_crystal_structures().values()[0]
+    struct = list(iotbx.cif.reader(file_path=str(fname)).build_crystal_structures().values())[0]
     data['structure'] = struct
     data['point_group'] = '{0!s}'.format(struct.space_group().point_group_type())
     data['is_chiral'] = struct.space_group().is_chiral()

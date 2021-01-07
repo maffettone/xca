@@ -1,5 +1,5 @@
 import json
-from pathlib2 import Path
+from pathlib import Path
 from xca.data_synthesis.builder import cycle_params
 from xca.data_synthesis.cctbx import load_cif, calc_structure_factor, convert_to_numpy
 

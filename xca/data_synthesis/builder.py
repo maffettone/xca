@@ -119,8 +119,8 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     """
 
-    from pathlib2 import Path
-    from cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
+    from pathlib import Path
+    from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     import numpy as np
     import random
 
@@ -221,7 +221,7 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     y: intensity values
     """
     import numpy as np
-    from cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
+    from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     parameters = load_params(input_params)
     _x = np.linspace(parameters['2theta_min'], parameters['2theta_max'], num=parameters['n_datapoints'])
     test_y = np.zeros_like(_x) - 1
