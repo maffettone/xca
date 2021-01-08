@@ -51,6 +51,7 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         march_range = (0.8, 1.0)
         sample_height = (-2.0, 2.0)
         shape_limit = 1e-1
+        reflections = log_reflections(cif_paths, param_dict['2theta_min'], param_dict['2theta_max'], wavelength)
     elif system == 'ADTA':
         wavelength = 1.54060
         param_dict = {'noise_std': 2e-3,
@@ -64,8 +65,9 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         sample_height = (-2, 2)
         shape_limit = 0.05
         cif_paths = list((Path(__file__).parent / 'cifs-ADTA/').glob('*.cif'))
+        reflections = log_reflections(cif_paths, param_dict['2theta_min'], param_dict['2theta_max'], wavelength)
     elif system == 'NiCoAl':
-        wavelength = 1.54060
+        wavelength = [(1.54060, 0.5), (1.54439, 0.5)]
         param_dict = {'noise_std': 5e-3,
                       'instrument_radius': 240.00,
                       'theta_m': 26.6,
@@ -77,16 +79,17 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         sample_height = (-2.0, 2.0)
         shape_limit = 0.05
         cif_paths = list((Path(__file__).parent / 'cifs-NiCoAl/').glob('*.cif'))
+        reflections = log_reflections(cif_paths, param_dict['2theta_min'], param_dict['2theta_max'], wavelength[0][0])
     else:
         raise ValueError("Unknown system for example pattern simulation {}".format(system))
 
-    reflections = log_reflections(cif_paths, param_dict['2theta_min'], param_dict['2theta_max'], wavelength)
+
 
     for idx, cif in enumerate(cif_paths):
         print(cif)
         phase = cif.stem
         param_dict['input_cif'] = cif
-        output_path = Path('../tmp') / str(idx)
+        output_path = Path(f'./tmp/{system}') / str(idx)
         output_path.mkdir(parents=True, exist_ok=True)
         cycle_params(n_patterns,
                      output_path,

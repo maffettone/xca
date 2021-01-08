@@ -47,11 +47,27 @@ python -m pip install .
 
 # Getting started
 ## A simple demonstration 
-Also poitn to example trainign
+A simple example of the full training pipeline is demonstrated in the
+[simple_example.py script](xca/examples/arxiv200800283/simple_example.py). 
+Executing this will do the following in a tmp directory:  
+1. Synthesize 100 example patterns for each phase of the three experimental systems presented in the paper below.
+2. Convert those patterns into a tfrecords object. 
+3. Train an ensemble model, print the results, and save the full model.  
 
-## A reconstruction of the original 
-## Literature Details 
+```
+cd xca/examples/arxiv200800283
+python simple_example.py
+```
+
+This will take a few minutes to run for each example. Details of generic synthesis and training can be found in 
+[example_synthesis.py](xca/examples/arxiv200800283/example_synthesis.py) and 
+[example_training.py](xca/examples/arxiv200800283/example_training.py).  
+
+## Literature details 
 The application of this package is demonstrated in [aXiv:2008.00283](https://arxiv.org/abs/2008.00283).
+To reproduce the models presented in this paper, the dataset synthesis should be scaled (use of `multiprocessing` is 
+encouraged) to produce 50,000 patterns per phase using the same parameterization presented in 
+[example_synthesis.py](xca/examples/arxiv200800283/example_synthesis.py). 
 
 **ABSTRACT:** The discovery of new structural and functional materials is driven by phase identification, often using X-ray diffraction (XRD). Automation has accelerated the rate of XRD measurements, greatly outpacing XRD analysis techniques that remain manual, time consuming, error prone, and impossible to scale. With the advent of autonomous robotic scientists or self-driving labs, contemporary techniques prohibit the integration of XRD. Here, we describe a computer program for the autonomous characterization of XRD data, driven by artificial intelligence (AI), for the discovery of new materials. Starting from structural databases, we train an ensemble model using a physically accurate synthetic dataset, which output probabilistic classifications --- rather than absolutes --- to overcome the overconfidence in traditional neural networks. This AI agent behaves as a companion to the researcher, improving accuracy and offering unprecedented time savings, and is demonstrated on a diverse set of organic and inorganic materials challenges. This innovation is directly applicable to inverse design approaches, robotic discovery systems, and can be immediately considered for other forms of characterization such as spectroscopy and the pair distribution function.
 
