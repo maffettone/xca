@@ -47,7 +47,6 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         kwargs = {'bkg_1': (-1e-4, 1e-4),
                   'bkg_0': (0, 1e-3)}
         cif_paths = list((Path(__file__).parent / 'cifs-BaTiO/').glob('*.cif'))
-
         march_range = (0.8, 1.0)
         sample_height = (-2.0, 2.0)
         shape_limit = 1e-1
@@ -82,8 +81,6 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         reflections = log_reflections(cif_paths, param_dict['2theta_min'], param_dict['2theta_max'], wavelength[0][0])
     else:
         raise ValueError("Unknown system for example pattern simulation {}".format(system))
-
-
 
     for idx, cif in enumerate(cif_paths):
         print(cif)

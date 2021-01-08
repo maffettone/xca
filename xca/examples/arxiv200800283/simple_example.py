@@ -5,8 +5,7 @@ from xca.ml.tf_parameters import load_hyperparameters
 
 
 def main():
-    #for system in ("BaTiO", "ADTA", "NiCoAl"):
-    for system in ( "NiCoAl",):
+    for system in ("BaTiO", "ADTA", "NiCoAl"):
         pattern_simulation(100, system)
         dir2TFR(f"tmp/{system}", f"tmp/{system}.tfrecords")
         params = load_hyperparameters(params_file=f"{system}_training.json")
