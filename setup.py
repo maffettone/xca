@@ -64,6 +64,7 @@ setup(
             # When adding files here, remember to update MANIFEST.in as well,
             # or else they will not be included in the distribution on PyPI!
             # 'path/to/data_file',
+            'xca/examples/arxiv200800283/cifs*/*.cif'
         ]
     },
     install_requires=requirements,

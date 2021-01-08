@@ -14,3 +14,4 @@ include xca/_version.py
 
 # If including data files in the package, add them like:
 # include path/to/data_file
+include xca/examples/arxiv200800283/cifs*/*.cif
