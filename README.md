@@ -59,7 +59,14 @@ cd xca/examples/arxiv200800283
 python simple_example.py
 ```
 
-This will take a few minutes to run for each example. Details of generic synthesis and training can be found in 
+This will take a few minutes to run for each example, approximately 10 minutes in total. 
+The output will print the path to each `cif` file as it generates the relevant set of synthetic data. This includes
+4 files for BaTiO, 5 files for ADTA, and 31 files for Ni-Co-Al. The output will then print the ensemble model summary. 
+The time for each epoch will be displayed on with 8 epochs for each model training. 
+Lastly results dictionary will be sloppily printed to show the loss, training, and validation metrics. 
+
+
+Details of generic synthesis and training can be found in 
 [example_synthesis.py](xca/examples/arxiv200800283/example_synthesis.py) and 
 [example_training.py](xca/examples/arxiv200800283/example_training.py).  
 
