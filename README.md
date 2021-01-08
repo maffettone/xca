@@ -22,22 +22,34 @@ This package is supported for macOS and Linux. The package has been tested on th
 
 ### Python dependencies 
 `xca` Dataset generation makes extensive use of the [cctbx](https://cctbx.github.io/), 
-which can be setup in a ipython kernel following [these instructions](https://medium.com/@sljack1992/making-a-custom-ipython-notebook-kernel-c59e493de0b6).
-The cctbx still uses python 2, so the dataset synthesis (python 2) is separated from the machine learning in tensorflow (python 3). 
+which is currently best installed into a conda environment. 
 
 The machine learning depends on a scientific tensorflow stack: 
 ```
 tensorflow >= 2.1.0
+# tensorflow-gpu will be installed if a gpu is available 
 numpy
 scikit-learn
 scipy
 ``` 
 
 ## Installation guide
-Due to mixed dependencies, we recommend  
+Due to the current unavailability of the cctbx on PyPi channels, we recommend first setting up a 
+conda environment for the cctbx. The remaining dependencies can be installed via pip. 
+```
+conda create -n xca -c conda-forge cctbx-base python=3.7
+conda activate xca
+git clone https://github.com/maffettone/xca
+cd xca
+python -m pip install .
+``` 
 
 
 # Getting started
+## A simple demonstration 
+Also poitn to example trainign
+
+## A reconstruction of the original 
 ## Literature Details 
 The application of this package is demonstrated in [aXiv:2008.00283](https://arxiv.org/abs/2008.00283).
 
