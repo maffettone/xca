@@ -1,0 +1,29 @@
+{
+    "ReLU_alpha": 0.2,
+    "lr": 0.0002,
+    "beta_1": 0.5,
+    "beta_2": 0.999,
+
+    "seed": null,
+    "n_classes": 4,
+    "batch_size": 16,
+    "data_shape": [3488, 1],
+    "dataset_path": [
+        "./tmp/BaTiO.tfrecords"
+                    ],
+    "verbose": true,
+    "multiprocessing": 16,
+    "epochs": 8,
+    "out_dir": "./tmp/BaTiO",
+    "checkpoint_rate": 2,
+    "continue": false,
+    "val_split": 0.15,
+    "ensemble_size": 50,
+
+    "filters": [8, 8, 4],
+    "kernel_size": [5,5,5],
+    "strides": [2,2,2],
+    "pool_sizes": [1, 1, 1],
+    "batchnorm": false,
+    "dense_dropout": 0.4
+}
