@@ -375,7 +375,8 @@ def create_complete_profile(params, normalize=True):
     Parameters
     -----------
     params : dictionary containing...
-    normalize: bool for max normalization of profile
+    normalize: bool
+        Whether to perform max normalization of profile AND add background
 
     Returns
     -----------
@@ -457,7 +458,8 @@ def sum_multi_wavelength_profiles(params, normalize=True):
     -----------
     params : dictionary containing...
         wavelength : list of tuples of wavelegth and weight
-    normalize: bool for max normalization of profile
+    normalize: bool
+        Whether to perform max normalization of profile AND add background
 
     Returns
     -----------
