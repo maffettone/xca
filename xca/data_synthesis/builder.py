@@ -3,6 +3,7 @@
 """
 
 import json
+import pickle
 
 default_params = {
     'input_cif': None,
@@ -132,7 +133,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     # Load default dictionary and linspace
     _default = load_params(input_params)
     _x = np.linspace(_default['2theta_min'], _default['2theta_max'], num=_default['n_datapoints'])
-    data = np.zeros((_x.shape[0], n_profiles))
 
     # Assemble list of parameters
     params_list = []
@@ -165,35 +165,34 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     if n_jobs > 1:
         from multiprocessing import Pool
         pool = Pool(n_jobs)
-        if type(parameters['input_cif']) == type([]):
+        if isinstance(parameters['input_cif'], list):
             results = list(pool.imap_unordered(multi_phase_profile, params_list))
-        elif type(parameters['wavelength']) == type([]):
+        elif isinstance(parameters['wavelength'], list):
             results = list(pool.imap_unordered(sum_multi_wavelength_profiles, params_list))
         else:
             results = list(pool.imap_unordered(create_complete_profile, params_list))
-
-        for idx in range(n_profiles):
-            data[:, idx] = results[idx][1]
         pool.close()
         pool.join()
-
     else:
-        for idx, parameters in enumerate(params_list):
-            if type(parameters['input_cif']) == type([]):
-                _, data[:, idx] = multi_phase_profile(parameters)
-            elif type(parameters['wavelength']) == type([]):
-                _, data[:, idx] = sum_multi_wavelength_profiles(parameters)
+        results = list()
+        for idx, parameters in params_list:
+            if isinstance(parameters['input_cif'], list):
+                results.append(multi_phase_profile(parameters))
+            elif isinstance(parameters['wavelength'], list):
+                results.append(sum_multi_wavelength_profiles(parameters))
             else:
-                _, data[:, idx] = create_complete_profile(parameters)
+                results.append(create_complete_profile(parameters))
 
     if path.is_dir():
-        for idx in range(n_profiles):
-            np.save(str(path / "{}.npy".format(idx)), data[:, idx])
+        for idx, da in enumerate(results):
+            with open(path / f"{idx}.pkl", "wb") as f:
+                pickle.dump(da, f, protocol=-1)
     elif path.suffix == '.npy':
-        np.save(str(output_path), data)
+        np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
     elif path.suffix == '.csv':
         cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
-        np.savetxt(str(output_path), data, delimiter=',', header=",".join(cols), comments='')
+        np.savetxt(str(output_path), np.stack([da.data for da in results], axis=-1),
+                   delimiter=',', header=",".join(cols), comments='')
     else:
         raise ValueError("Path {} is invalid (doesn't exist or improper extension)".format(path))
     return
@@ -217,8 +216,7 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
 
     Returns
     -------
-    x: two theta values
-    y: intensity values
+    da : DataArray
     """
     import numpy as np
     from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
@@ -237,11 +235,11 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
 
     for key in kwargs:
         parameters[key] = np.random.uniform(*kwargs[key])
-    if type(parameters['input_cif']) == type([]):
-        x, y = multi_phase_profile(parameters)
-    elif type(parameters['wavelength']) == type([]):
-        x, y = sum_multi_wavelength_profiles(parameters)
+    if isinstance(parameters['input_cif'], list):
+        da = multi_phase_profile(parameters)
+    elif isinstance(parameters['wavelength'], list):
+        da = sum_multi_wavelength_profiles(parameters)
     else:
-        x, y = create_complete_profile(parameters)
+        da = create_complete_profile(parameters)
 
-    return x, y
+    return da
