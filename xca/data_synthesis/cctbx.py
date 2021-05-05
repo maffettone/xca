@@ -5,6 +5,7 @@ This package depends on the cctbx, so requires a specific python2 kernel or inte
 @author: maffettone
 """
 import numpy as np
+import xarray as xr
 from math import sqrt, cos, sin, radians
 from ast import literal_eval as make_tuple
 import iotbx.cif
@@ -270,14 +271,14 @@ def apply_sample_offset(Th_I_pairs, s=0., R=200):
     return Th_I_pairs
 
 
-def apply_background(x, y, params=None):
+def apply_background(da, params=None):
     """
     Applies a 6-term polynomial addition to the background.
 
     Parameters
     -----------
-    x : range of 2theta values
-    y : intensity as a function of 2theta
+    da : DataArray
+        1-dimensional DataArray with coordinates of 2theta values and intensity values
     params : dictionary of parameters containing ....
         bkg_6 : 6th term polynomial coefficient
         bkg_5 : 5th term polynomial coefficient
@@ -291,18 +292,18 @@ def apply_background(x, y, params=None):
         bkg_ea: A*e^(bx), a factor in exponential
         bkg_eb: A*e^(bx), C term in coeffcient
     """
-    y += (params['bkg_6'] * x ** 6 +
-          params['bkg_5'] * x ** 5 +
-          params['bkg_4'] * x ** 4 +
-          params['bkg_3'] * x ** 3 +
-          params['bkg_2'] * x ** 2 +
-          params['bkg_1'] * x ** 1 +
-          params['bkg_0'] +
-          params['bkg_-1'] * x ** -1 +
-          params['bkg_-2'] * x ** -2 +
-          params['bkg_ea']*np.exp(params['bkg_eb'] * x)
-          )
-    return y
+    da += (params['bkg_6'] * da['2theta'] ** 6 +
+           params['bkg_5'] * da['2theta'] ** 5 +
+           params['bkg_4'] * da['2theta'] ** 4 +
+           params['bkg_3'] * da['2theta'] ** 3 +
+           params['bkg_2'] * da['2theta'] ** 2 +
+           params['bkg_1'] * da['2theta'] ** 1 +
+           params['bkg_0'] +
+           params['bkg_-1'] * da['2theta'] ** -1 +
+           params['bkg_-2'] * da['2theta'] ** -2 +
+           params['bkg_ea'] * np.exp(params['bkg_eb'] * da['2theta'])
+           )
+    return da
 
 
 def apply_peak_profile(Th_I_pairs, parameters):
@@ -413,16 +414,31 @@ def create_complete_profile(params, normalize=True):
 
     # Apply's peak shape to intensities and returns xy-like spectrum
     x, y = apply_peak_profile(Th_I_pairs, params)
+
+    # Convert to xarray
+    params.update(data)
+    params.update(
+        dict(zip(["L_a", "L_b", "L_c", "alpha", "beta", "gamma"],
+                 (data['structure'].unit_cell().parameters())))
+    )
+    del params["structure"]
+    da = xr.DataArray(
+        y,
+        coords={"2theta": x},
+        dims=["2theta"],
+        attrs=params
+    )
+
     # Normalizes to maximum intensity and adds background w.r.t normalized prof then renormalize
     if normalize:
-        y /= np.max(y)
-        y = apply_background(x, y, params)
-        y /= np.max(y)
+        da /= np.max(da)
+        da = apply_background(da, params=params)
+        da /= np.max(da)
 
     # Applied noise sampled from a normal dist to the normalized spectra.
     if params['noise_std'] > 0:
-        noise = noise = np.random.normal(0, params['noise_std'], len(y))
-        y = y + noise
+        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+        da = da + noise
 
     if params['verbose']:
         _Th, _I = [list(_x) for _x in zip(*sorted(Th_I_pairs))]
@@ -430,7 +446,7 @@ def create_complete_profile(params, normalize=True):
         for i in range(len(_I)):
             print("{:12.2f}{:12.3f}".format(_Th[i], _I[i] / max(_I) * 100))
 
-    return x, y
+    return da
 
 
 def sum_multi_wavelength_profiles(params, normalize=True):
