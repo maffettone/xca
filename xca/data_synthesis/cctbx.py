@@ -381,8 +381,7 @@ def create_complete_profile(params, normalize=True):
 
     Returns
     -----------
-    x : two theta values over the range
-    y : normalized PXRD profile
+    da : DataArray
 
 
     """
@@ -439,8 +438,9 @@ def create_complete_profile(params, normalize=True):
 
     # Applied noise sampled from a normal dist to the normalized spectra.
     if params['noise_std'] > 0:
-        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
-        da = da + noise
+        with xr.set_options(keep_attrs=True):
+            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            da = da + noise
 
     if params['verbose']:
         _Th, _I = [list(_x) for _x in zip(*sorted(Th_I_pairs))]
@@ -464,21 +464,21 @@ def sum_multi_wavelength_profiles(params, normalize=True):
 
     Returns
     -----------
-    x : two theta values over the range
-    y : normalized PXRD profile
+    da : DataArray
     """
     first = True
     single_params = {x: params[x] for x in params if x != 'wavelength'}
 
-    for wavelength, weight in params['wavelength']:
-        single_params['wavelength'] = wavelength
-        single_params['noise_std'] = 0
-        da_tmp = create_complete_profile(single_params, normalize=False)
-        if first:
-            da = da_tmp * weight
-            first = False
-        else:
-            da += da_tmp * weight
+    with xr.set_options(keep_attrs=True):
+        for wavelength, weight in params['wavelength']:
+            single_params['wavelength'] = wavelength
+            single_params['noise_std'] = 0
+            da_tmp = create_complete_profile(single_params, normalize=False)
+            if first:
+                da = da_tmp * weight
+                first = False
+            else:
+                da += da_tmp * weight
 
     if normalize:
         da /= np.max(da)
@@ -486,11 +486,12 @@ def sum_multi_wavelength_profiles(params, normalize=True):
         da /= np.max(da)
 
     if params['noise_std'] > 0:
-        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
-        da = da + noise
+        with xr.set_options(keep_attrs=True):
+            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            da = da + noise
 
     # Update attrs to full dict
-    da.attrs = params
+    da.attrs.update(params)
     return da
 
 
@@ -506,26 +507,32 @@ def multi_phase_profile(params, normalize=True):
         Whether to perform max normalization of profile AND add background
     Returns
     -----------
-    x : two theta values over the range
-    y : normalized PXRD profile
+    da : DataArray
     """
-
+    from collections import defaultdict
     first = True
     single_params = {x: params[x] for x in params if x != 'input_cif'}
+    update_dict = defaultdict(list)
 
-    for cif, weight in params['input_cif']:
-        single_params['input_cif'] = cif
-        single_params['noise_std'] = 0
-        if isinstance(single_params['wavelength'], list):
-            da_tmp = sum_multi_wavelength_profiles(single_params, normalize=False)
-        else:
-            da_tmp = create_complete_profile(single_params, normalize=False)
+    with xr.set_options(keep_attrs=True):
+        for cif, weight in params['input_cif']:
+            single_params['input_cif'] = cif
+            single_params['noise_std'] = 0
+            if isinstance(single_params['wavelength'], list):
+                da_tmp = sum_multi_wavelength_profiles(single_params, normalize=False)
+            else:
+                da_tmp = create_complete_profile(single_params, normalize=False)
 
-        if first:
-            da = da_tmp * weight
-            first = False
-        else:
-            da += da_tmp * weight
+            for key in ["L_a", "L_b", "L_c", "alpha", "beta", "gamma", "point_group",
+                        "is_chiral", "is_centric", "laue_group", "crystal_system", "space_group",
+                        "point_group"]:
+                update_dict[key].append(da_tmp.attrs[key])
+
+            if first:
+                da = da_tmp * weight
+                first = False
+            else:
+                da += da_tmp * weight
 
     if normalize:
         da /= np.max(da)
@@ -533,6 +540,11 @@ def multi_phase_profile(params, normalize=True):
         da /= np.max(da)
 
     if params['noise_std'] > 0:
-        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
-        da = da + noise
+        with xr.set_options(keep_attrs=True):
+            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            da = da + noise
+
+    # Update attrs to full dict, and list of lattice parameters
+    da.attrs.update(params)
+    da.attrs.update(update_dict)
     return da
