@@ -162,6 +162,7 @@ def convert_to_numpy(f_calc, wavelength=1.5406, tth_min=0., tth_max=179.):
         data[key] = data[key][mask]
     return data
 
+
 def apply_multiplicities(data):
     '''
     Takes in the dictionary of scattering data returned by convert_to_numpy()
@@ -471,25 +472,26 @@ def sum_multi_wavelength_profiles(params, normalize=True):
 
     for wavelength, weight in params['wavelength']:
         single_params['wavelength'] = wavelength
-        x_tmp, y_tmp = create_complete_profile(single_params, normalize=False)
+        single_params['noise_std'] = 0
+        da_tmp = create_complete_profile(single_params, normalize=False)
         if first:
-            x = x_tmp
-            y = y_tmp * weight
+            da = da_tmp * weight
             first = False
         else:
-            assert x[0] == x_tmp[0]
-            y += y_tmp * weight
+            da += da_tmp * weight
 
     if normalize:
-        y /= np.max(y)
-        y = apply_background(x, y, params)
-        y /= np.max(y)
+        da /= np.max(da)
+        da = apply_background(da, params=params)
+        da /= np.max(da)
 
     if params['noise_std'] > 0:
-        noise = np.random.normal(0, params['noise_std'], len(y))
-        y = y + noise
+        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+        da = da + noise
 
-    return x, y
+    # Update attrs to full dict
+    da.attrs = params
+    return da
 
 
 def multi_phase_profile(params, normalize=True):
@@ -500,7 +502,8 @@ def multi_phase_profile(params, normalize=True):
     -----------
     params : dictionary containing...
         input_cif : list of tuples of (phases, weights)
-    normalize: bool for max normalization of profile
+    normalize: bool
+        Whether to perform max normalization of profile AND add background
     Returns
     -----------
     x : two theta values over the range
@@ -512,24 +515,24 @@ def multi_phase_profile(params, normalize=True):
 
     for cif, weight in params['input_cif']:
         single_params['input_cif'] = cif
-        if type(single_params['wavelength']) == type([]):
-            x_tmp, y_tmp = sum_multi_wavelength_profiles(single_params, normalize=False)
+        single_params['noise_std'] = 0
+        if isinstance(single_params['wavelength'], list):
+            da_tmp = sum_multi_wavelength_profiles(single_params, normalize=False)
         else:
-            x_tmp, y_tmp = create_complete_profile(single_params, normalize=False)
+            da_tmp = create_complete_profile(single_params, normalize=False)
 
         if first:
-            x = x_tmp
-            y = y_tmp * weight
+            da = da_tmp * weight
             first = False
         else:
-            assert x[0] == x_tmp[0]
-            y += y_tmp * weight
+            da += da_tmp * weight
 
     if normalize:
-        y /= np.max(y)
-        y = apply_background(x, y, params)
-        y /= np.max(y)
+        da /= np.max(da)
+        da = apply_background(da, params=params)
+        da /= np.max(da)
+
     if params['noise_std'] > 0:
-        noise = np.random.normal(0, params['noise_std'], len(y))
-        y = y + noise
-    return x, y
+        noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+        da = da + noise
+    return da
