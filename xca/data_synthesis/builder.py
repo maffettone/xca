@@ -4,6 +4,8 @@
 
 import json
 import pickle
+import numpy as np
+import xarray as xa
 
 default_params = {
     'input_cif': None,
@@ -76,6 +78,14 @@ def load_params(input_params=None):
             parameters.update(input_params)
     return parameters
 
+def concat_and_clean(da_list):
+    """Concatenate and clean the attributes of a list of datarrays for output"""
+    da = xa.concat(da_list, dim="idx", combine_attrs="drop_conflicts")
+    for key, value in da.attrs.items():
+        if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
+            da.attrs[key] = str(value)
+    return da
+
 
 def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
                  march_range=(0., 1.), preferred_axes=None,
@@ -95,9 +105,11 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         number of profiles to generate for cif
     output_path: basestring, path
         path for output
-        directory for collection of .npy files
+        directory for collection of .pkl files of complete datarrays
+        All other options produce lossy outputs where metadata is lost partially or completely
         .npy for complete dataset as .npy
         .csv for complete dataset as .csv
+        .nc for complete dataset as netcdf datarray
     input_params: basestring, Path, or dict
         Path to json file or dictionary of hyperparameters
     shape_limit: float
@@ -122,7 +134,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     from pathlib import Path
     from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
-    import numpy as np
     import random
 
     # Checks for output availability
@@ -193,6 +204,9 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
         np.savetxt(str(output_path), np.stack([da.data for da in results], axis=-1),
                    delimiter=',', header=",".join(cols), comments='')
+    elif path.suffix == ".nc":
+        da = concat_and_clean(results)
+        da.to_netcdf(path)
     else:
         raise ValueError("Path {} is invalid (doesn't exist or improper extension)".format(path))
     return
@@ -218,7 +232,6 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     -------
     da : DataArray
     """
-    import numpy as np
     from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     parameters = load_params(input_params)
     _x = np.linspace(parameters['2theta_min'], parameters['2theta_max'], num=parameters['n_datapoints'])
