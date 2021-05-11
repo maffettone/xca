@@ -74,7 +74,7 @@ def calc_structure_factor(struct, wavelength=1.5406):
     return f_calc
 
 
-def apply_additional_debye_waller(f_calc, debye_waller_factors=None):
+def apply_additional_debye_waller(f_calc, debye_waller_factors):
     '''
     Routine to apply additional debye waller factors that
     were not included in initial cif or structure.
@@ -93,7 +93,7 @@ def apply_additional_debye_waller(f_calc, debye_waller_factors=None):
     return f_calc
 
 
-def apply_extinction_correction(f_calc, extinction_correction_x=None, wavelength=1.5406):
+def apply_extinction_correction(f_calc, wavelength, extinction_correction_x=0):
     '''
     Routine to apply additional extinction correction
 
@@ -106,7 +106,7 @@ def apply_extinction_correction(f_calc, extinction_correction_x=None, wavelength
     f_calc : cctbx.miller.array of hkl, and structure factor values
     extinction_correction_x: value for shelx extinction correction
     '''
-    if extinction_correction_x is not None:
+    if extinction_correction_x:
         f_calc.apply_shelxl_extinction_correction(extinction_correction_x, wavelength)
     return f_calc
 
@@ -182,7 +182,7 @@ def apply_multiplicities(data):
     return data
 
 
-def apply_texturing(data, preferred=None, march=None):
+def apply_texturing(data, preferred=(), march=1.0):
     """
     Takes in scattering data as a dictionary of vectors from convert_to_numpy() and applies preffered orientation
     augmentation to the intensities according tyo March-Dollase approach.
@@ -203,7 +203,7 @@ def apply_texturing(data, preferred=None, march=None):
         1 is completely random orientaiton.
         0 would be uniaxial orientation.
     """
-    if preferred == None:
+    if not preferred:
         return data
     if march <= 0 or march > 1:
         raise ValueError("Invalid value for march. Should be between 0 and 1. Is: {}".format(march))
@@ -393,8 +393,9 @@ def create_complete_profile(params, normalize=True):
     # Apply additional Debeye Waller factor and extinction correction to miller array
     sf = apply_additional_debye_waller(sf, debye_waller_factors=params['debye_waller_factors'])
     sf = apply_extinction_correction(sf,
-                                     extinction_correction_x=params['extinction_correction_x'],
-                                     wavelength=params['wavelength'])
+                                     wavelength=params['wavelength'],
+                                     extinction_correction_x=params['extinction_correction_x']
+                                     )
     # Convert to dictionary of numpy arrays
     scattering = convert_to_numpy(sf,
                                   wavelength=params['wavelength'],

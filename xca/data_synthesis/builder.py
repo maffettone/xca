@@ -2,8 +2,8 @@
 @author: maffettone
 """
 
+from pathlib import Path
 import json
-import pickle
 import numpy as np
 import xarray as xa
 
@@ -11,11 +11,11 @@ default_params = {
     'input_cif': None,
     'wavelength': [(1.54060, 0.5), (1.54439, 0.5)],  # List of tuples (lambda, fraction), or single value
     # Aditional Debye-Waller factors
-    'debye_waller_factors': None,
+    'debye_waller_factors': (),
     # SHELX extinction correction
-    'extinction_correction_x': None,
+    'extinction_correction_x': 0,
     # Preferred orientaiton and march parameter
-    'preferred': None,
+    'preferred': [],
     'march_parameter': 1,
     # LP factor
     'theta_m': 26.6,
@@ -78,9 +78,21 @@ def load_params(input_params=None):
             parameters.update(input_params)
     return parameters
 
+
+def metadata_adjustments(da):
+    """Helper to change metadata of known conflict to appropriate type"""
+    da.attrs["input_cif"] = Path(da.attrs["input_cif"]).stem
+    da.attrs["is_chiral"] = int(da.attrs["is_chiral"])
+    da.attrs["is_centric"] = int(da.attrs["is_centric"])
+    if "verbose" in da.attrs:
+        del da.attrs["verbose"]
+    return
+
+
 def concat_and_clean(da_list):
     """Concatenate and clean the attributes of a list of datarrays for output"""
     da = xa.concat(da_list, dim="idx", combine_attrs="drop_conflicts")
+    metadata_adjustments(da)
     for key, value in da.attrs.items():
         if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
             da.attrs[key] = str(value)
@@ -196,8 +208,10 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     if path.is_dir():
         for idx, da in enumerate(results):
-            with open(path / f"{idx}.pkl", "wb") as f:
-                pickle.dump(da, f, protocol=-1)
+            metadata_adjustments(da)
+            da.to_netcdf(path / f"{idx}.nc")
+            # with open(path / f"{idx}.pkl", "wb") as f:
+            #     pickle.dump(da, f, protocol=-1)
     elif path.suffix == '.npy':
         np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
     elif path.suffix == '.csv':
@@ -255,4 +269,6 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     else:
         da = create_complete_profile(parameters)
 
+    metadata_adjustments(da)
     return da
+
