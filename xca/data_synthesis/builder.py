@@ -101,7 +101,7 @@ def concat_and_clean(da_list):
 
 def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
                  march_range=(0., 1.), preferred_axes=None,
-                 sample_height=None, noise_exp=None, n_jobs=1, **kwargs):
+                 sample_height=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
     """
     Generates n_profiles of profiles for a single cif.
     Outputs can be a directory containing many individual numpy files, a bulk numpy file, or a bulk csv.
@@ -136,6 +136,8 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         range of exponents noise to choose on uniform dist (log noise)
     n_jobs: int
         Number of jobs for multiproc
+    start_idx : int
+        Optional value to start the indexing of outputs
     kwargs: dict
         key:tuple pairs of matching parameters for the uniform random ranges
 
@@ -209,9 +211,7 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     if path.is_dir():
         for idx, da in enumerate(results):
             metadata_adjustments(da)
-            da.to_netcdf(path / f"{idx}.nc")
-            # with open(path / f"{idx}.pkl", "wb") as f:
-            #     pickle.dump(da, f, protocol=-1)
+            da.to_netcdf(path / f"{start_idx+idx}.nc")
     elif path.suffix == '.npy':
         np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
     elif path.suffix == '.csv':
