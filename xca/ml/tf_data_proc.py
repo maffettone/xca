@@ -125,7 +125,7 @@ def build_dataset(params):
     assert check_paths, "Dataset path is invalid: {}".format(params['dataset_path'])
     dataset = tf.data.TFRecordDataset(filenames=params['dataset_path'], num_parallel_reads=len(params['dataset_path']))
     dataset_size = sum(1 for _ in dataset)
-    train_size = int(dataset_size * params['val_split'])
+    train_size = int(dataset_size * (1-params['val_split']))
     dataset = dataset.shuffle(100000, reshuffle_each_iteration=False)
     dataset = dataset.map(lambda e: parse_TFR(e, params),
                           num_parallel_calls=params['multiprocessing'])
