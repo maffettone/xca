@@ -43,6 +43,10 @@ git clone https://github.com/maffettone/xca
 cd xca
 python -m pip install .
 ``` 
+For some machines, specificity with tensorflow may become necessary depending on your CUDA version, and the top line can be replaced with the following, replacing the correct version of tensorflow:
+```
+conda create --name xca -c conda-forge cctbx-base tensorflow-gpu=2.2
+```
 
 
 # Getting started
