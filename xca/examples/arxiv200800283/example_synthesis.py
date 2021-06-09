@@ -86,7 +86,7 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         print(cif)
         phase = cif.stem
         param_dict['input_cif'] = cif
-        output_path = Path(f'./tmp/{system}') / str(idx)
+        output_path = Path('tmp') / f'{system}' / str(idx)
         output_path.mkdir(parents=True, exist_ok=True)
         cycle_params(n_patterns,
                      output_path,

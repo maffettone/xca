@@ -1,4 +1,4 @@
-from xca.ml.tf_data_proc import dir2TFR
+from xca.ml.tf_data_proc import np_dir_to_record
 from xca.ml.tf_models import CNN_training as training
 from xca.ml.tf_parameters import load_hyperparameters
 import argparse
@@ -14,6 +14,6 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     params = load_hyperparameters(params_file = args['params'])
     if args['npy']:
-        dir2TFR(args['npy'], params['dataset_path'])
+        np_dir_to_record(args['npy'], params['dataset_path'])
     res = training(params=params)
     print(res)
