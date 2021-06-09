@@ -31,7 +31,7 @@ def np_dir_to_record(npy_path, tfr_path, shuffle=True):
     writer = tf.io.TFRecordWriter(tfr_path)
 
     for fname in fnames:
-        label = str(fname).split('/')[-2]
+        label = fname.parent.name
         X = np.load(fname)
         dim = X.shape[0]
         X_raw = X.astype(np.float32).tostring()
@@ -90,8 +90,9 @@ def exp2TFR(fnames, tfr_path):
     writer = tf.io.TFRecordWriter(tfr_path)
 
     for fname in fnames:
-        label = str(fname).split('/')[-2]
-        source_fname = str(fname).split('/')[-1]
+        fname = Path(fname)
+        label = fname.parent.name
+        source_fname = fname.name
         X = np.load(fname)
         dim = X.shape[0]
         X_raw = X.astype(np.float32).tostring()
