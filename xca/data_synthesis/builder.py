@@ -152,7 +152,7 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     # Checks for output availability
     path = Path(output_path)
-    if not (path.is_dir or path.suffix in ['.npy', '.csv']):
+    if not (path.is_dir or path.suffix in ['.npy', '.csv', ".nc"]):
         raise TypeError("Output path type not implemented: {}".format(path))
 
     # Load default dictionary and linspace
