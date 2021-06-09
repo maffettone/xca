@@ -2,17 +2,20 @@
 @author: maffettone
 """
 
+from pathlib import Path
 import json
+import numpy as np
+import xarray as xa
 
 default_params = {
     'input_cif': None,
     'wavelength': [(1.54060, 0.5), (1.54439, 0.5)],  # List of tuples (lambda, fraction), or single value
     # Aditional Debye-Waller factors
-    'debye_waller_factors': None,
+    'debye_waller_factors': (),
     # SHELX extinction correction
-    'extinction_correction_x': None,
+    'extinction_correction_x': 0,
     # Preferred orientaiton and march parameter
-    'preferred': None,
+    'preferred': [],
     'march_parameter': 1,
     # LP factor
     'theta_m': 26.6,
@@ -76,9 +79,29 @@ def load_params(input_params=None):
     return parameters
 
 
+def metadata_adjustments(da):
+    """Helper to change metadata of known conflict to appropriate type"""
+    da.attrs["input_cif"] = Path(da.attrs["input_cif"]).stem
+    da.attrs["is_chiral"] = int(da.attrs["is_chiral"])
+    da.attrs["is_centric"] = int(da.attrs["is_centric"])
+    if "verbose" in da.attrs:
+        del da.attrs["verbose"]
+    return
+
+
+def concat_and_clean(da_list):
+    """Concatenate and clean the attributes of a list of datarrays for output"""
+    da = xa.concat(da_list, dim="idx", combine_attrs="drop_conflicts")
+    metadata_adjustments(da)
+    for key, value in da.attrs.items():
+        if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
+            da.attrs[key] = str(value)
+    return da
+
+
 def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
                  march_range=(0., 1.), preferred_axes=None,
-                 sample_height=None, noise_exp=None, n_jobs=1, **kwargs):
+                 sample_height=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
     """
     Generates n_profiles of profiles for a single cif.
     Outputs can be a directory containing many individual numpy files, a bulk numpy file, or a bulk csv.
@@ -94,9 +117,11 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         number of profiles to generate for cif
     output_path: basestring, path
         path for output
-        directory for collection of .npy files
+        directory for collection of .pkl files of complete datarrays
+        All other options produce lossy outputs where metadata is lost partially or completely
         .npy for complete dataset as .npy
         .csv for complete dataset as .csv
+        .nc for complete dataset as netcdf datarray
     input_params: basestring, Path, or dict
         Path to json file or dictionary of hyperparameters
     shape_limit: float
@@ -111,6 +136,8 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         range of exponents noise to choose on uniform dist (log noise)
     n_jobs: int
         Number of jobs for multiproc
+    start_idx : int
+        Optional value to start the indexing of outputs
     kwargs: dict
         key:tuple pairs of matching parameters for the uniform random ranges
 
@@ -121,7 +148,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     from pathlib import Path
     from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
-    import numpy as np
     import random
 
     # Checks for output availability
@@ -132,7 +158,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     # Load default dictionary and linspace
     _default = load_params(input_params)
     _x = np.linspace(_default['2theta_min'], _default['2theta_max'], num=_default['n_datapoints'])
-    data = np.zeros((_x.shape[0], n_profiles))
 
     # Assemble list of parameters
     params_list = []
@@ -165,35 +190,37 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     if n_jobs > 1:
         from multiprocessing import Pool
         pool = Pool(n_jobs)
-        if type(parameters['input_cif']) == type([]):
+        if isinstance(parameters['input_cif'], list):
             results = list(pool.imap_unordered(multi_phase_profile, params_list))
-        elif type(parameters['wavelength']) == type([]):
+        elif isinstance(parameters['wavelength'], list):
             results = list(pool.imap_unordered(sum_multi_wavelength_profiles, params_list))
         else:
             results = list(pool.imap_unordered(create_complete_profile, params_list))
-
-        for idx in range(n_profiles):
-            data[:, idx] = results[idx][1]
         pool.close()
         pool.join()
-
     else:
-        for idx, parameters in enumerate(params_list):
-            if type(parameters['input_cif']) == type([]):
-                _, data[:, idx] = multi_phase_profile(parameters)
-            elif type(parameters['wavelength']) == type([]):
-                _, data[:, idx] = sum_multi_wavelength_profiles(parameters)
+        results = list()
+        for idx, parameters in params_list:
+            if isinstance(parameters['input_cif'], list):
+                results.append(multi_phase_profile(parameters))
+            elif isinstance(parameters['wavelength'], list):
+                results.append(sum_multi_wavelength_profiles(parameters))
             else:
-                _, data[:, idx] = create_complete_profile(parameters)
+                results.append(create_complete_profile(parameters))
 
     if path.is_dir():
-        for idx in range(n_profiles):
-            np.save(str(path / "{}.npy".format(idx)), data[:, idx])
+        for idx, da in enumerate(results):
+            metadata_adjustments(da)
+            da.to_netcdf(path / f"{start_idx+idx}.nc")
     elif path.suffix == '.npy':
-        np.save(str(output_path), data)
+        np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
     elif path.suffix == '.csv':
         cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
-        np.savetxt(str(output_path), data, delimiter=',', header=",".join(cols), comments='')
+        np.savetxt(str(output_path), np.stack([da.data for da in results], axis=-1),
+                   delimiter=',', header=",".join(cols), comments='')
+    elif path.suffix == ".nc":
+        da = concat_and_clean(results)
+        da.to_netcdf(path)
     else:
         raise ValueError("Path {} is invalid (doesn't exist or improper extension)".format(path))
     return
@@ -217,10 +244,8 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
 
     Returns
     -------
-    x: two theta values
-    y: intensity values
+    da : DataArray
     """
-    import numpy as np
     from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     parameters = load_params(input_params)
     _x = np.linspace(parameters['2theta_min'], parameters['2theta_max'], num=parameters['n_datapoints'])
@@ -237,11 +262,13 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
 
     for key in kwargs:
         parameters[key] = np.random.uniform(*kwargs[key])
-    if type(parameters['input_cif']) == type([]):
-        x, y = multi_phase_profile(parameters)
-    elif type(parameters['wavelength']) == type([]):
-        x, y = sum_multi_wavelength_profiles(parameters)
+    if isinstance(parameters['input_cif'], list):
+        da = multi_phase_profile(parameters)
+    elif isinstance(parameters['wavelength'], list):
+        da = sum_multi_wavelength_profiles(parameters)
     else:
-        x, y = create_complete_profile(parameters)
+        da = create_complete_profile(parameters)
 
-    return x, y
+    metadata_adjustments(da)
+    return da
+
