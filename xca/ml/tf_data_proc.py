@@ -28,7 +28,7 @@ def np_dir_to_record(npy_path, tfr_path, shuffle=True):
     if shuffle:
         random.shuffle(fnames)
 
-    writer = tf.io.TFRecordWriter(tfr_path)
+    writer = tf.io.TFRecordWriter(str(tfr_path))
 
     for fname in fnames:
         label = fname.parent.name
@@ -71,7 +71,7 @@ def xr_dir_to_record(xr_path, tfr_path, attrs_key, transform=_float_feature, shu
     if shuffle:
         random.shuffle(fnames)
 
-    writer = tf.io.TFRecordWriter(tfr_path)
+    writer = tf.io.TFRecordWriter(str(tfr_path))
 
     for fname in fnames:
         X = xr.open_dataarray(fname)
