@@ -168,8 +168,8 @@ def CNN_training(params):
         for batch in val_dataset:
             val_pred = val_step(batch)
             val_accuracy(batch['label'], val_pred)
-        results['train_acc'].append(train_accuracy.result())
-        results['val_acc'].append(val_accuracy.result())
+        results['train_acc'].append(train_accuracy.result().numpy())
+        results['val_acc'].append(val_accuracy.result().numpy())
 
         # Save the model every set epochs
         if (epoch + 1) % params['checkpoint_rate'] == 0:
@@ -182,8 +182,8 @@ def CNN_training(params):
 
     for key in results:
         with open(os.path.join(params['out_dir'], key + '.txt'), 'w') as f:
-            for tensor in results[key]:
-                f.write(str(tensor.numpy()))
+            for result in results[key]:
+                f.write(str(result))
                 f.write('\n')
 
     return results, CNN
