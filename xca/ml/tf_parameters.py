@@ -27,7 +27,8 @@ def _default_CNN_hyperparameters():
         'pool_sizes': [1, 1, 1],
         'batchnorm': False,
         'dense_dims': [],
-        'dense_dropout': 0.4
+        'dense_dropout': 0.4,
+        'categorical': True
     }
     return hyperparams
 
