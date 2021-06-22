@@ -86,6 +86,8 @@ def metadata_adjustments(da):
     da.attrs["is_centric"] = int(da.attrs["is_centric"])
     if "verbose" in da.attrs:
         del da.attrs["verbose"]
+    if isinstance(da.attrs["wavelength"], list):
+        da.attrs["wavelength"], da.attrs["wavelength_weight"] = zip(*da.attrs["wavelength"])
     return
 
 
@@ -152,7 +154,7 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     # Checks for output availability
     path = Path(output_path)
-    if not (path.is_dir or path.suffix in ['.npy', '.csv']):
+    if not (path.is_dir or path.suffix in ['.npy', '.csv', ".nc"]):
         raise TypeError("Output path type not implemented: {}".format(path))
 
     # Load default dictionary and linspace
@@ -200,7 +202,7 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         pool.join()
     else:
         results = list()
-        for idx, parameters in params_list:
+        for parameters in params_list:
             if isinstance(parameters['input_cif'], list):
                 results.append(multi_phase_profile(parameters))
             elif isinstance(parameters['wavelength'], list):

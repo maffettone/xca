@@ -12,6 +12,7 @@ import numpy as np
 import time
 
 from .tf_data_proc import build_dataset
+from pathlib import Path
 
 
 def build_CNN_model(params):
@@ -115,8 +116,7 @@ def CNN_training(params):
         np.random.seed(params['seed'])
         tf.random.set_seed(params['seed'])
 
-    if not os.path.isdir(params['out_dir']):
-        os.mkdir(params['out_dir'])
+    Path(params['out_dir']).mkdir(exist_ok=True, parents=True)
 
     if params['ensemble_size'] > 1:
         CNN = build_CNN_ensemble_model(params)
@@ -133,8 +133,8 @@ def CNN_training(params):
     optimizer = Adam(lr=params['lr'], beta_1=params['beta_1'], beta_2=params['beta_2'])
 
     # Checkpoints
-    checkpoint_dir = os.path.join(params['out_dir'], 'training_checkpoints')
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+    checkpoint_dir = str(Path(params['out_dir']) / 'training_checkpoints')
+    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
     checkpoint = tf.train.Checkpoint(optimizer=optimizer,
                                      CNN=CNN)
 
@@ -168,8 +168,8 @@ def CNN_training(params):
         for batch in val_dataset:
             val_pred = val_step(batch)
             val_accuracy(batch['label'], val_pred)
-        results['train_acc'].append(train_accuracy.result())
-        results['val_acc'].append(val_accuracy.result())
+        results['train_acc'].append(train_accuracy.result().numpy())
+        results['val_acc'].append(val_accuracy.result().numpy())
 
         # Save the model every set epochs
         if (epoch + 1) % params['checkpoint_rate'] == 0:
@@ -181,9 +181,9 @@ def CNN_training(params):
         print('Time for full training is {} sec'.format(time.time() - start_time))
 
     for key in results:
-        with open(os.path.join(params['out_dir'], key + '.txt'), 'w') as f:
-            for tensor in results[key]:
-                f.write(str(tensor.numpy()))
+        with open(Path(params['out_dir']) / (key + '.txt'), 'w') as f:
+            for result in results[key]:
+                f.write(str(result))
                 f.write('\n')
 
     return results, CNN

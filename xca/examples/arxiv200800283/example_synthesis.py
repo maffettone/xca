@@ -82,11 +82,13 @@ def pattern_simulation(n_patterns, system='BaTiO'):
     else:
         raise ValueError("Unknown system for example pattern simulation {}".format(system))
 
+    d = {}
     for idx, cif in enumerate(cif_paths):
         print(cif)
         phase = cif.stem
+        d[phase] = idx
         param_dict['input_cif'] = cif
-        output_path = Path(f'./tmp/{system}') / str(idx)
+        output_path = Path('tmp') / f'{system}' / str(idx)
         output_path.mkdir(parents=True, exist_ok=True)
         cycle_params(n_patterns,
                      output_path,
@@ -96,3 +98,4 @@ def pattern_simulation(n_patterns, system='BaTiO'):
                      sample_height=sample_height,
                      preferred_axes=reflections[phase],
                      **kwargs)
+    return d
