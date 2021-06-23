@@ -9,7 +9,7 @@ def get_reflections(cif_path, tth_min, tth_max, wavelength):
     data = load_cif(cif_path)
     sf = calc_structure_factor(data['structure'])
     scattering = convert_to_numpy(sf, wavelength=wavelength, tth_max=tth_max, tth_min=tth_min)
-    reflections = zip(scattering['hkl'], scattering['2theta'], scattering['I'])
+    reflections = zip(scattering.hkl, scattering.tth, scattering.I)
     keep = []
     for reflection in reflections:
         if reflection[1] < tth_max and reflection[1] > tth_min and reflection[2] > 1:

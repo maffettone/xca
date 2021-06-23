@@ -1,14 +1,34 @@
 """
 Python wrapping for the mass production of synthetic XRD patterns.
-This package depends on the cctbx, so requires a specific python2 kernel or interpreter.
-
-@author: maffettone
+This module utilizes the cctbx and its features and nomenclature.
 """
 import numpy as np
 import xarray as xr
 from math import sqrt, cos, sin, radians
 from ast import literal_eval as make_tuple
 import iotbx.cif
+from collections import namedtuple
+from dataclasses import dataclass
+
+Lattice = namedtuple("Lattice", "a b c alpha beta gamma")
+
+
+@dataclass
+class Data:
+    Q: np.ndarray
+    FoQ: np.ndarray
+    I: np.ndarray
+    Q_mag: np.ndarray
+    hkl: np.ndarray
+    tth: np.ndarray  # 2-theta
+    mult: np.ndarray  # multiplicities
+    R: np.ndarray  # Reciprocal lattice
+
+    def apply_mask(self, mask):
+        for attr, value in self.__dict__.items():
+            if attr in ("Q", "FoQ", "IoQ", "Q_mag", "hkl", "tth", "mult"):
+                setattr(self, attr, value[mask])
+
 
 
 def load_cif(fname):
@@ -26,27 +46,26 @@ def load_cif(fname):
 
 
 def get_lattice(unit_cell):
-    '''
+    """
     Creates matrix of lattice vectors
     from the cctbx.xray.structure.unit_cell()
-    '''
+    """
     uc = list(unit_cell)
-    lat = {}
-    lat['L_a'] = uc[0]
-    lat['L_b'] = uc[1]
-    lat['L_c'] = uc[2]
-    lat['alpha'] = radians(uc[3])
-    lat['beta'] = radians(uc[4])
-    lat['gamma'] = radians(uc[5])
+    lat = Lattice(a=uc[0],
+                  b=uc[1],
+                  c=uc[2],
+                  alpha=radians(uc[3]),
+                  beta=radians(uc[4]),
+                  gamma=radians(uc[5]))
     af2c = np.zeros((3, 3))
-    v = sqrt(1 - cos(lat['alpha']) ** 2 - cos(lat['beta']) ** 2 - cos(lat['gamma']) ** 2 +
-             2 * cos(lat['alpha']) * cos(lat['beta']) * cos(lat['gamma']))
-    af2c[0, 0] = lat['L_a']
-    af2c[0, 1] = lat['L_b'] * cos(lat['gamma'])
-    af2c[1, 1] = lat['L_b'] * sin(lat['gamma'])
-    af2c[0, 2] = lat['L_c'] * cos(lat['beta'])
-    af2c[1, 2] = lat['L_c'] * (cos(lat['alpha']) - cos(lat['beta']) * cos(lat['gamma'])) / sin(lat['gamma'])
-    af2c[2, 2] = lat['L_c'] * v / sin(lat['gamma'])
+    v = sqrt(1 - cos(lat.alpha) ** 2 - cos(lat.beta) ** 2 - cos(lat.gamma) ** 2 +
+             2 * cos(lat.alpha) * cos(lat.beta) * cos(lat.gamma))
+    af2c[0, 0] = lat.a
+    af2c[0, 1] = lat.b * cos(lat.gamma)
+    af2c[1, 1] = lat.b * sin(lat.gamma)
+    af2c[0, 2] = lat.c * cos(lat.beta)
+    af2c[1, 2] = lat.c * (cos(lat.alpha) - cos(lat.beta) * cos(lat.gamma)) / sin(lat.gamma)
+    af2c[2, 2] = lat.c * v / sin(lat.gamma)
     return af2c
 
 
@@ -143,42 +162,36 @@ def convert_to_numpy(f_calc, wavelength=1.5406, tth_min=0., tth_max=179.):
     R = get_lattice(make_tuple('{0!s}'.format(f_calc.unit_cell().reciprocal())))
     Q = Q_from_hkl(hkl, R)
 
-    data = {}
-    data['Q'] = Q
-    data['FoQ'] = f_calc.data().as_numpy_array()
-    data['I'] = f_calc.intensities().data().as_numpy_array()
-    data['Q_mag'] = np.linalg.norm(Q, axis=1)
-    data['hkl'] = hkl
-    data['2theta'] = np.degrees(f_calc.two_theta(wavelength).data().as_numpy_array())
-    data['mult'] = f_calc.multiplicities().data().as_numpy_array()
-    data['R'] = R
-
-    # Removing data that is outside of range
-    non_array_keys = ['R']
-    mask = (data['2theta'] > tth_min) & (data['2theta'] < tth_max)
-    for key in data:
-        if key in non_array_keys:
-            continue
-        data[key] = data[key][mask]
+    data = Data(Q=Q,
+                FoQ=f_calc.data().as_numpy_array(),
+                I=f_calc.intensities().data().as_numpy_array(),
+                Q_mag=np.linalg.norm(Q, axis=1),
+                hkl=hkl,
+                tth=np.degrees(f_calc.two_theta(wavelength).data().as_numpy_array()),
+                mult=f_calc.multiplicities().data().as_numpy_array(),
+                R=R)
+    data.apply_mask((data.tth > tth_min) & (data.tth < tth_max))
     return data
 
 
 def apply_multiplicities(data):
-    '''
-    Takes in the dictionary of scattering data returned by convert_to_numpy()
+    """
+    Takes in the Data class of scattering data returned by convert_to_numpy()
     and applies the multiplicity to each intensity.
 
     Sets the multiplicity to 1 to avoid accidental double-use.
+    Parameters
+    ----------
+    data : Data
 
     Returns
-    -----------
-    data : scattering data as a dictionary of vectors from convert_to_numpy()
+    -------
+    data
 
-
-    '''
-    for i in range(len(data['2theta'])):
-        data['I'][i] *= data['mult'][i]
-        data['mult'][i] = 1
+    """
+    for i in range(len(data.tth)):
+        data.I[i] *= data.mult[i]
+        data.mult[i] = 1
     return data
 
 
@@ -190,32 +203,37 @@ def apply_texturing(data, preferred=(), march=1.0):
     Importantly, this does not regard symmetry of the plane, and only considers the reflections as labeled.
     https://journals.iucr.org/j/issues/2009/03/00/ks5199/
 
-    Returns
-    -----------
-    data : scattering data as a dictionary of vectors from convert_to_numpy()
-
     Parameters
-    -----------
-    data : scattering data as a dictionary of vectors from convert_to_numpy()
-    preferred : miller index normal to the preferred plane
-    march : The March parameter, 0 < r <=1.
+    ----------
+    data : Data
+        scattering data as a dataclass of vectors from convert_to_numpy()
+    preferred : tuple, list
+        miller index normal to the preferred plane
+    march : float
+        The March parameter, 0 < r <=1.
         Greater than 1 would indicate needles not plates.
         1 is completely random orientaiton.
         0 would be uniaxial orientation.
+
+    Returns
+    -------
+    data : Data
+        scattering data as a dictionary of vectors from convert_to_numpy()
+
     """
     if not preferred:
         return data
     if march <= 0 or march > 1:
         raise ValueError("Invalid value for march. Should be between 0 and 1. Is: {}".format(march))
 
-    R = data['R']
+    R = data.R
     H = Q_from_hkl(preferred, R)
-    for i in range(len(data['Q'])):
-        h = np.array(data['Q'][i])
+    for i in range(len(data.Q)):
+        h = np.array(data.Q[i])
         # arccos is forced to 1,-1 for precision errors of parallel vectors
         alpha = np.arccos(max(min(np.dot(H, h) / np.linalg.norm(H) / np.linalg.norm(h), 1.0), -1.0))
         W = (march ** 2 * (np.cos(alpha) ** 2) + (1 / march) * np.sin(alpha) ** 2) ** (-3. / 2)
-        data['I'][i] *= W
+        data.I[i] *= W
 
     return data
 
@@ -409,7 +427,7 @@ def create_complete_profile(params, normalize=True):
                                  march=params['march_parameter'])
 
     # Cast as data pairing 2-theta and Intensity and applies polarization
-    Th_I_pairs = zip(scattering['2theta'], scattering['I'])
+    Th_I_pairs = zip(scattering.tth, scattering.I)
     Th_I_pairs = apply_polarization(Th_I_pairs, theta_m=params['theta_m'])
     # peak position augmentation to shift peaks based on offset height and instrument radius
     Th_I_pairs = apply_sample_offset(Th_I_pairs, s=params['offset_height'], R=params['instrument_radius'])
