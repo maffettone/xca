@@ -290,7 +290,20 @@ def apply_sample_offset(Th_I_pairs, s=0., R=200):
     return Th_I_pairs
 
 
-def apply_background(da, params=None):
+def apply_background(da,
+                     *,
+                     bkg_6=0.,
+                     bkg_5=0.,
+                     bkg_4=0.,
+                     bkg_3=0.,
+                     bkg_2=0.,
+                     bkg_1=0.,
+                     bkg_0=0.,
+                     bkg_n1=0.,
+                     bkg_n2=0.,
+                     bkg_ea=0.,
+                     bkg_eb=0.,
+                     **kwargs):
     """
     Applies a 6-term polynomial addition to the background.
 
@@ -298,50 +311,79 @@ def apply_background(da, params=None):
     -----------
     da : DataArray
         1-dimensional DataArray with coordinates of 2theta values and intensity values
-    params : dictionary of parameters containing ....
-        bkg_6 : 6th term polynomial coefficient
-        bkg_5 : 5th term polynomial coefficient
-        bkg_4 : 4th term polynomial coefficient
-        bkg_3 : 3th term polynomial coefficient
-        bkg_2 : 2th term polynomial coefficient
-        bkg_1 : 1th term polynomial coefficient
-        bkg_0 : constant term in polynomial
-        bkg_-1: 1/x term polynomial coefficient
-        bkg_-1: 1/x^2 polynomial coefficient
-        bkg_ea: A*e^(bx), a factor in exponential
-        bkg_eb: A*e^(bx), C term in coeffcient
+    bkg_6 : float
+        6th term polynomial coefficient
+    bkg_5 : float
+        5th term polynomial coefficient
+    bkg_4 : float
+        4th term polynomial coefficient
+    bkg_3 : float
+        3th term polynomial coefficient
+    bkg_2 : float
+        2th term polynomial coefficient
+    bkg_1 : float
+        1th term polynomial coefficient
+    bkg_0 : float
+        constant term in polynomial
+    bkg_n1: float
+        1/x term polynomial coefficient
+    bkg_n2: float
+        1/x^2 polynomial coefficient
+    bkg_ea:
+        A*e^(bx), a factor in exponential
+    bkg_eb:
+        A*e^(bx), b term in coeffcient
     """
-    da += (params['bkg_6'] * da['2theta'] ** 6 +
-           params['bkg_5'] * da['2theta'] ** 5 +
-           params['bkg_4'] * da['2theta'] ** 4 +
-           params['bkg_3'] * da['2theta'] ** 3 +
-           params['bkg_2'] * da['2theta'] ** 2 +
-           params['bkg_1'] * da['2theta'] ** 1 +
-           params['bkg_0'] +
-           params['bkg_-1'] * da['2theta'] ** -1 +
-           params['bkg_-2'] * da['2theta'] ** -2 +
-           params['bkg_ea'] * np.exp(params['bkg_eb'] * da['2theta'])
+    da += (bkg_6 * da['2theta'] ** 6 +
+           bkg_5 * da['2theta'] ** 5 +
+           bkg_4 * da['2theta'] ** 4 +
+           bkg_3 * da['2theta'] ** 3 +
+           bkg_2 * da['2theta'] ** 2 +
+           bkg_1 * da['2theta'] ** 1 +
+           bkg_0 +
+           bkg_n1 * da['2theta'] ** -1 +
+           bkg_n2 * da['2theta'] ** -2 +
+           bkg_ea * np.exp(bkg_eb * da['2theta'])
            )
     return da
 
 
-def apply_peak_profile(Th_I_pairs, parameters):
+def apply_peak_profile(Th_I_pairs,
+                       *,
+                       tth_min,
+                       tth_max,
+                       n_datapoints,
+                       U=0.1,
+                       V=0.1,
+                       W=0.1,
+                       X=0.1,
+                       Y=0.1,
+                       Z=0.0,
+                       **kwargs):
     """
     Takes in I vs 2theta data and applies a profiling function.
 
     Parameters
     -----------
-    Th_I_pairs: two_theta and intensity paris
-    parameters: dictionary containing...
-        2theta_min
-        2theta_max
-        n_datapoints
-        U, V, W, X, Y, Z.
+    Th_I_pairs: tuple
+        two_theta and intensity paris
+    tth_min: float
+        2-theta min
+    tth_max: float
+        2-theta max
+    U: float
+    V: float
+    W: float
+    X: float
+    Y: float
+    Z: float
 
     Returns
     -----------
-    x : 2theta values over range
-    y : intensity as a function of 2theta
+    x : ndarray
+        2theta values over range
+    y : ndarray
+        intensity as a function of 2theta
 
     PMM Notes:
     Cagliotti, Paoletti, & Ricci is the gaussian case of eta=0 and Z=0.
@@ -351,14 +393,8 @@ def apply_peak_profile(Th_I_pairs, parameters):
     B = 2.42843
     C = 4.47163
     D = 0.07842
-    U = parameters['U']
-    V = parameters['V']
-    W = parameters['W']
-    X = parameters['X']
-    Y = parameters['Y']
-    Z = parameters['Z']
 
-    x = np.linspace(parameters['2theta_min'], parameters['2theta_max'], num=parameters['n_datapoints'])
+    x = np.linspace(tth_min, tth_max, n_datapoints)
     y = np.zeros_like(x)
 
     # The slowest component of the process is calculating the gauss and lorentz curves.
@@ -387,53 +423,77 @@ def apply_peak_profile(Th_I_pairs, parameters):
     return x, y
 
 
-def create_complete_profile(params, normalize=True):
+def create_complete_profile(*,
+                            input_cif,
+                            wavelength,
+                            tth_min,
+                            tth_max,
+                            n_datapoints,
+                            instrument_radius,
+                            offset_height=0.0,
+                            preferred=(),
+                            march_parameter=1.,
+                            theta_m=26.6,
+                            debye_waller_factors=(),
+                            extinction_correction_x=0.,
+                            noise_std=0.,
+                            normalize=True,
+                            verbose=False,
+                            **kwargs):
     """
     Final function that takes input dictionary of parameters and generates numpy array
     of complete PXRD profile.
     Parameters
     -----------
-    params : dictionary containing...
     normalize: bool
         Whether to perform max normalization of profile AND add background
+    kwargs: dict
+        Keyword arguments for apply_background and apply_peak_profile
 
     Returns
-    -----------
+    --------
     da : DataArray
 
 
     """
+    params = locals()
+    del params['kwargs']
+    params.update(kwargs)
 
     # Load cif
-    data = load_cif(str(params['input_cif']))
+    data = load_cif(str(input_cif))
     # Calculate structure factor as cctbx miller array
-    sf = calc_structure_factor(data['structure'], wavelength=params['wavelength'])
+    sf = calc_structure_factor(data['structure'], wavelength=wavelength)
     # Apply additional Debeye Waller factor and extinction correction to miller array
-    sf = apply_additional_debye_waller(sf, debye_waller_factors=params['debye_waller_factors'])
+    sf = apply_additional_debye_waller(sf, debye_waller_factors=debye_waller_factors)
     sf = apply_extinction_correction(sf,
-                                     wavelength=params['wavelength'],
-                                     extinction_correction_x=params['extinction_correction_x']
+                                     wavelength=wavelength,
+                                     extinction_correction_x=extinction_correction_x
                                      )
     # Convert to dictionary of numpy arrays
     scattering = convert_to_numpy(sf,
-                                  wavelength=params['wavelength'],
-                                  tth_min=params['2theta_min'],
-                                  tth_max=params['2theta_max'])
+                                  wavelength=wavelength,
+                                  tth_min=tth_min,
+                                  tth_max=tth_max)
     # Apply multiplicites from symmetry
     scattering = apply_multiplicities(scattering)
     # Apply texturing from preffered orientation
     scattering = apply_texturing(scattering,
-                                 preferred=params['preferred'],
-                                 march=params['march_parameter'])
+                                 preferred=preferred,
+                                 march=march_parameter)
 
     # Cast as data pairing 2-theta and Intensity and applies polarization
     Th_I_pairs = zip(scattering.tth, scattering.I)
-    Th_I_pairs = apply_polarization(Th_I_pairs, theta_m=params['theta_m'])
+    Th_I_pairs = apply_polarization(Th_I_pairs, theta_m=theta_m)
     # peak position augmentation to shift peaks based on offset height and instrument radius
-    Th_I_pairs = apply_sample_offset(Th_I_pairs, s=params['offset_height'], R=params['instrument_radius'])
+    Th_I_pairs = apply_sample_offset(Th_I_pairs, s=offset_height, R=instrument_radius)
 
     # Apply's peak shape to intensities and returns xy-like spectrum
-    x, y = apply_peak_profile(Th_I_pairs, params)
+    x, y = apply_peak_profile(Th_I_pairs,
+                              tth_min=tth_min,
+                              tth_max=tth_max,
+                              n_datapoints=n_datapoints,
+                              **kwargs)
 
     # Convert to xarray
     params.update(data)
@@ -452,16 +512,16 @@ def create_complete_profile(params, normalize=True):
     # Normalizes to maximum intensity and adds background w.r.t normalized prof then renormalize
     if normalize:
         da /= np.max(da)
-        da = apply_background(da, params=params)
+        da = apply_background(da, **kwargs)
         da /= np.max(da)
 
     # Applied noise sampled from a normal dist to the normalized spectra.
-    if params['noise_std'] > 0:
+    if noise_std > 0:
         with xr.set_options(keep_attrs=True):
-            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            noise = np.random.normal(0, noise_std, da.shape[-1])
             da = da + noise
 
-    if params['verbose']:
+    if verbose:
         _Th, _I = [list(_x) for _x in zip(*sorted(Th_I_pairs))]
         print("{:12s}{:12s}".format('2-theta', 'Intensity'))
         for i in range(len(_I)):
@@ -470,29 +530,30 @@ def create_complete_profile(params, normalize=True):
     return da
 
 
-def sum_multi_wavelength_profiles(params, normalize=True):
+def sum_multi_wavelength_profiles(wavelengths, *, normalize=True, noise_std=0., **kwargs):
     """
     Applies the complete profile generation to systems with muiltiple wavelengths.
 
     Parameters
     -----------
-    params : dictionary containing...
-        wavelength : list of tuples of wavelegth and weight
+    wavelengths: list of tuples
+        [(wavelength, weight)]
     normalize: bool
         Whether to perform max normalization of profile AND add background
+    noise_std: float
+        Standard deviation of normally distributed noise
+    kwargs: dict
+        Keyword arguments for create_complete_profile
 
     Returns
     -----------
     da : DataArray
     """
     first = True
-    single_params = {x: params[x] for x in params if x != 'wavelength'}
 
     with xr.set_options(keep_attrs=True):
-        for wavelength, weight in params['wavelength']:
-            single_params['wavelength'] = wavelength
-            single_params['noise_std'] = 0
-            da_tmp = create_complete_profile(single_params, normalize=False)
+        for wavelength, weight in wavelengths:
+            da_tmp = create_complete_profile(wavelength=wavelength, noise_std=0., normalize=False, **kwargs)
             if first:
                 da = da_tmp * weight
                 first = False
@@ -501,27 +562,29 @@ def sum_multi_wavelength_profiles(params, normalize=True):
 
     if normalize:
         da /= np.max(da)
-        da = apply_background(da, params=params)
+        da = apply_background(da, **kwargs)
         da /= np.max(da)
 
-    if params['noise_std'] > 0:
+    if noise_std > 0:
         with xr.set_options(keep_attrs=True):
-            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            noise = np.random.normal(0, noise_std, da.shape[-1])
             da = da + noise
 
-    # Update attrs to full dict
-    da.attrs.update(params)
+    # Update attrs to local params
+    da.attrs['wavelength'] = wavelengths
+    da.attrs['normalize'] = normalize
+    da.attrs['noise_std'] = noise_std
     return da
 
 
-def multi_phase_profile(params, normalize=True):
+def multi_phase_profile(input_cifs, *, wavelength, normalize=True, noise_std=0., **kwargs):
     """
     Applies the complete profile generation to systems with multiple phases.
 
     Parameters
     -----------
-    params : dictionary containing...
-        input_cif : list of tuples of (phases, weights)
+    input_cifs :
+        list of tuples of (phases, weights)
     normalize: bool
         Whether to perform max normalization of profile AND add background
     Returns
@@ -530,17 +593,15 @@ def multi_phase_profile(params, normalize=True):
     """
     from collections import defaultdict
     first = True
-    single_params = {x: params[x] for x in params if x != 'input_cif'}
+
     update_dict = defaultdict(list)
 
     with xr.set_options(keep_attrs=True):
-        for cif, weight in params['input_cif']:
-            single_params['input_cif'] = cif
-            single_params['noise_std'] = 0
-            if isinstance(single_params['wavelength'], list):
-                da_tmp = sum_multi_wavelength_profiles(single_params, normalize=False)
+        for cif, weight in input_cifs:
+            if isinstance(wavelength, list):
+                da_tmp = sum_multi_wavelength_profiles(noise_std=0., normalize=False, input_cif=cif, **kwargs)
             else:
-                da_tmp = create_complete_profile(single_params, normalize=False)
+                da_tmp = create_complete_profile(input_cif=cif, normalize=False, **kwargs)
 
             for key in ["L_a", "L_b", "L_c", "alpha", "beta", "gamma", "point_group",
                         "is_chiral", "is_centric", "laue_group", "crystal_system", "space_group",
@@ -555,15 +616,18 @@ def multi_phase_profile(params, normalize=True):
 
     if normalize:
         da /= np.max(da)
-        da = apply_background(da, params=params)
+        da = apply_background(da, **kwargs)
         da /= np.max(da)
 
-    if params['noise_std'] > 0:
+    if noise_std > 0:
         with xr.set_options(keep_attrs=True):
-            noise = np.random.normal(0, params['noise_std'], da.shape[-1])
+            noise = np.random.normal(0, noise_std, da.shape[-1])
             da = da + noise
 
     # Update attrs to full dict, and list of lattice parameters
-    da.attrs.update(params)
+    da.attrs['input_cif'] = input_cifs
+    da.attrs['wavelength'] = wavelength
+    da.attrs['normalize'] = normalize
+    da.attrs['noise_std'] = noise_std
     da.attrs.update(update_dict)
     return da
