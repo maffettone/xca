@@ -88,7 +88,7 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         phase = cif.stem
         d[phase] = idx
         param_dict['input_cif'] = cif
-        output_path = Path('tmp') / f'{system}' / str(idx)
+        output_path = Path('tmp') / f'{system}'
         output_path.mkdir(parents=True, exist_ok=True)
         cycle_params(n_patterns,
                      output_path,
@@ -97,5 +97,6 @@ def pattern_simulation(n_patterns, system='BaTiO'):
                      shape_limit=shape_limit,
                      sample_height=sample_height,
                      preferred_axes=reflections[phase],
+                     start_idx=idx*n_patterns,
                      **kwargs)
     return d

@@ -25,6 +25,8 @@ def np_dir_to_record(npy_path, tfr_path, shuffle=True):
     """Depreceated categorial dir to tfrecord for numpy data"""
     import random
     fnames = list(Path(npy_path).glob("*/*.npy"))
+    if not fnames:
+        raise RuntimeError(f"Path is empty: {npy_path.absolute()}")
     if shuffle:
         random.shuffle(fnames)
 
@@ -68,6 +70,8 @@ def xr_dir_to_record(xr_path, tfr_path, attrs_key, transform=_float_feature, shu
     """
     import random
     fnames = list(Path(xr_path).glob("*.nc"))
+    if not fnames:
+        raise RuntimeError(f"Path is empty: {xr_path.absolute()}")
     if shuffle:
         random.shuffle(fnames)
 
