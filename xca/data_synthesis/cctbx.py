@@ -15,6 +15,7 @@ Lattice = namedtuple("Lattice", "a b c alpha beta gamma")
 
 @dataclass
 class Data:
+    """Numpy array storage of structure factor calculation"""
     Q: np.ndarray
     FoQ: np.ndarray
     I: np.ndarray
@@ -30,8 +31,20 @@ class Data:
                 setattr(self, attr, value[mask])
 
 
-
 def load_cif(fname):
+    """
+    Loads cif file using cctbx and returns dictionary of key data.
+
+    Parameters
+    ----------
+    fname : str, Path
+
+    Returns
+    -------
+    data: dict
+        Dictionary of key structural data from cif file
+
+    """
     data = {}
     struct = list(iotbx.cif.reader(file_path=str(fname)).build_crystal_structures().values())[0]
     data['structure'] = struct
@@ -70,92 +83,97 @@ def get_lattice(unit_cell):
 
 
 def Q_from_hkl(HKL, R):
+    """Converts array of HKL vectors into Q space"""
     hkl = np.array(HKL)
     Q = np.matmul(R, hkl.T)
     return Q.T
 
 
 def calc_structure_factor(struct, wavelength=1.5406):
-    '''
+    """
     Calculates a structure factor using cctbx functionality.
-
-    Returns
-    ----------
-    f_calc : cctbx.miller.array of hkl, and structure factor values
 
     Parameters
     -----------
     struct : cctbx.xray.structure as generated from structure file
     wavelength : angstroms wavelength of source, defaults to copper
-    '''
+
+    Returns
+    ----------
+    f_calc : cctbx.miller.array of hkl, and structure factor values
+    """
 
     f_calc = struct.structure_factors(d_min=wavelength / 2).f_calc()
     return f_calc
 
 
 def apply_additional_debye_waller(f_calc, debye_waller_factors):
-    '''
+    """
     Routine to apply additional debye waller factors that
     were not included in initial cif or structure.
 
-    Returns
-    ----------
-    f_calc : cctbx.miller.array of hkl, and structure factor values
-
     Parameters
     -----------
-    f_calc : cctbx.miller.array of hkl, and structure factor values
-    debye_waller_factors: kwargs, additional debye_waller_factors (not included in struct)
-    '''
+    f_calc : cctbx.miller.array
+        Array of hkl, and structure factor values
+    debye_waller_factors: dict
+        Keyword arguments for additional debye_waller_factors (not included in struct)
+
+    Returns
+    ----------
+    f_calc : cctbx.miller.array
+        Updated array of hkl, and structure factor values
+    """
     if debye_waller_factors:
         f_calc.apply_debye_waller_factors(**debye_waller_factors)
     return f_calc
 
 
 def apply_extinction_correction(f_calc, wavelength, extinction_correction_x=0):
-    '''
+    """
     Routine to apply additional extinction correction
+    Parameters
+    -----------
+    f_calc : cctbx.miller.array
+        Array of hkl, and structure factor values
+    wavelength: float
+        Measurement wavelength in angstroms
+    extinction_correction_x: float
+        value for shelx extinction correction
 
     Returns
     ----------
-    f_calc : cctbx.miller.array of hkl, and structure factor values
-
-    Parameters
-    -----------
-    f_calc : cctbx.miller.array of hkl, and structure factor values
-    extinction_correction_x: value for shelx extinction correction
-    '''
+    f_calc : cctbx.miller.array
+        Updated array of hkl, and structure factor values
+    """
     if extinction_correction_x:
         f_calc.apply_shelxl_extinction_correction(extinction_correction_x, wavelength)
     return f_calc
 
 
 def convert_to_numpy(f_calc, wavelength=1.5406, tth_min=0., tth_max=179.):
-    '''
+    """
     Converts a structure factor intensity into a dicitonary
     of numpy arrays in terms of hkl, Q, and 2theta.
-
-    Returns
-    ----------
-    data : dictionary containing numpy arrays...
-        Q : Q vector
-        I : Intensity
-        Q_mag: magnitude of Q
-        hkl : tuples of hkl values
-        2theta : two theta (degrees)
-        mult : reflection multiplicities
-        R : reciprocal n(dlattice vectors
+    Importantly, the Q vector is calculated by the physics convention of reciprocal lattice.
+    I.E., the without the 2pi factor.
 
     Parameters
     -----------
-    struct : cctbx.xray.structure as generated from structure file
-    wavelength : angstroms wavelength of source, defaults to copper
-    tth_min: two theta value at minimum, for removing reflections out of range
-    tth_max: two theta value at maximum, for removing reflections out of range
+    f_calc : cctbx.miller.array
+        Array of hkl, and structure factor values
+    wavelength : float
+        angstroms wavelength of source, defaults to copper
+    tth_min: float
+        two theta value at minimum, for removing reflections out of range
+    tth_max: float
+        two theta value at maximum, for removing reflections out of range
 
-    Importantly, the Q vector is calculated by the physics convention of reciprocal lattice.
-    I.E., the without the 2pi factor.
-    '''
+    Returns
+    ----------
+    data: Data
+        Dataclass of numpy arrays for processing
+    """
 
     hkl = np.array(f_calc.intensities().indices())
 
@@ -186,7 +204,8 @@ def apply_multiplicities(data):
 
     Returns
     -------
-    data
+    data: Data
+        Updated with multiplicities
 
     """
     for i in range(len(data.tth)):
@@ -243,15 +262,16 @@ def apply_polarization(Th_I_pairs, theta_m=0.):
     Lorentz-polarization correction
     reference.iucr.org/dictionary/Lorentz-polarization_correction
 
-    Returns
-    -----------
-    Th_I_pairs : scattering intensities as a function of 2theta. List of tuples
-
     Parameters
     -----------
-    Th_I_pairs : scattering intensities as a function of 2theta. List of tuples
-    theta_m : experimental Bragg angle of the monochromator crystal
+    Th_I_pairs : List of tupes
+        scattering intensities as a function of 2theta
+    theta_m : float
+        experimental Bragg angle of the monochromator crystal
 
+    Returns
+    -------
+    Th_I_pairs : scattering intensities as a function of 2theta. List of tuples
     """
 
     Th, I = [list(x) for x in zip(*Th_I_pairs)]
@@ -271,15 +291,19 @@ def apply_sample_offset(Th_I_pairs, s=0., R=200):
     where s is the sample offset height
     and R is the instrument radius
 
-    Returns
-    -----------
-    Th_I_pairs : scattering intensities as a function of 2theta. List of tuples
-
     Parameters
     -----------
-    Th_I_pairs : scattering intensities as a function of 2theta. List of tuples
-    s : sample offset height [mm]
-    R : instrument radius [mm]
+    Th_I_pairs : List of tuples
+        scattering intensities as a function of 2theta.
+    s : float
+        sample offset height [mm]
+    R : float
+        instrument radius [mm]
+
+    Returns
+    -----------
+    Th_I_pairs : Th_I_pairs : List of tuples
+        scattering intensities as a function of 2theta.
     """
     Th, I = [list(x) for x in zip(*Th_I_pairs)]
     for i in range(len(Th)):
@@ -371,6 +395,8 @@ def apply_peak_profile(Th_I_pairs,
         2-theta min
     tth_max: float
         2-theta max
+    n_datapoints: int
+        number of datapoints in linspace
     U: float
     V: float
     W: float
@@ -445,8 +471,35 @@ def create_complete_profile(*,
     of complete PXRD profile.
     Parameters
     -----------
+    input_cif: str, Path
+        Cit file to read and create pattern from
+    wavelength: float
+        Instrument wavelength in angstroms
+    tth_min: float
+        2-theta min
+    tth_max: float
+        2-theta max
+    n_datapoints: int
+        number of datapoints in linspace
+    instrument_radius: float
+        instrument radius (measurement distance) in millimeters
+    offset_height: float
+        Offset height for sample offset in millimeters. Can be used as a proxy for isotropic expansion/contraction
+    preferred: list, tuple
+        hkl of preferred axis
+    march_parameter: float
+        [0,1] parameter desribing degree of uniform orientation.
+        1 is completely random orientaiton.
+        0 would be uniaxial orientation.
+        Greater than 1 would indicate needles not plates, and should not be used.
+    noise_std: float
+        Normally distributed noise is applied with this standard deviation if greater than 0.
+    theta_m: float
+    debye_waller_factors: dict
+    extinction_correction_x: float
     normalize: bool
         Whether to perform max normalization of profile AND add background
+    verbose: bool
     kwargs: dict
         Keyword arguments for apply_background and apply_peak_profile
 
@@ -541,7 +594,7 @@ def sum_multi_wavelength_profiles(wavelengths, *, normalize=True, noise_std=0., 
     normalize: bool
         Whether to perform max normalization of profile AND add background
     noise_std: float
-        Standard deviation of normally distributed noise
+        Normally distributed noise is applied with this standard deviation if greater than 0.
     kwargs: dict
         Keyword arguments for create_complete_profile
 
@@ -585,6 +638,10 @@ def multi_phase_profile(input_cifs, *, wavelength, normalize=True, noise_std=0.,
     -----------
     input_cifs :
         list of tuples of (phases, weights)
+    wavelength: list, float
+        Either list of tuples for multiple wavelengths or single float of wavelength in angstroms
+    noise_std: float
+        Normally distributed noise is applied with this standard deviation if greater than 0.
     normalize: bool
         Whether to perform max normalization of profile AND add background
     Returns
