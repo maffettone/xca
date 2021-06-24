@@ -119,8 +119,7 @@ def multi_phase_wrapper(kwargs):
 
 
 def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
-                 march_range=(0., 1.), preferred_axes=None,
-                 sample_height=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
+                 march_range=(0., 1.), preferred_axes=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
     """
     Generates n_profiles of profiles for a single cif.
     Outputs can be a directory containing many individual numpy files, a bulk numpy file, or a bulk csv.
@@ -149,8 +148,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         range of march parameters to choose on uniform dist
     preferred_axes: list of tuples
         HKL for preferred axes to randomly select from
-    sample_height: tuple
-        range of sample heights to choose on a uniform dist
     noise_exp: tuple
         range of exponents noise to choose on uniform dist (log noise)
     n_jobs: int
@@ -194,8 +191,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
                 parameters['Y'] = np.random.uniform(np.abs(parameters['X']), a)
                 test_y = parameters['U'] * (np.tan(_x) ** 2) + parameters['V'] * np.tan(_x) + parameters['W']
         parameters['march_parameter'] = np.random.uniform(*march_range)
-        if sample_height:
-            parameters['offset_height'] = np.random.uniform(*sample_height)
         if preferred_axes:
             parameters['preferred'] = random.choice(preferred_axes)
         if noise_exp:
@@ -211,9 +206,9 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     if n_jobs <= 0:
         n_jobs = os.cpu_count()
     pool = Pool(n_jobs)
-    if isinstance(parameters['input_cif'], list):
+    if isinstance(_default['input_cif'], list):
         results = list(pool.imap_unordered(multi_phase_wrapper, params_list))
-    elif isinstance(parameters['wavelength'], list):
+    elif isinstance(_default['wavelength'], list):
         results = list(pool.imap_unordered(multi_wavelength_wrapper, params_list))
     else:
         results = list(pool.imap_unordered(complete_profile_wrapper, params_list))
