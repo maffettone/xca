@@ -10,7 +10,7 @@ def _default_CNN_hyperparameters():
         'n_classes': 5,
         'batch_size': 16,
         "data_shape": [2894, 1],
-        'dataset_path': None,
+        'dataset_paths': None,
         'verbose': True,
         'multiprocessing': 8,
         'epochs': 10,

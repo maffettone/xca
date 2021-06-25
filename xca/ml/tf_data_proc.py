@@ -109,83 +109,83 @@ def exp2TFR(fnames, tfr_path):
     writer.close()
 
 
-def parse_categorical_TFR(example_proto, params):
-    '''
-    Reads in Tensorflow Record object
+def parse_categorical_TFR(example_proto, data_shape):
+    """
+    Reads in Tensorflow Record object for categorical classification
     Parameters
     ----------
-    example_proto
-    params
+    example_proto:
+    data_shape: tuple
 
     Returns
     -------
+    data
+    label
 
-    '''
+    """
     feature_description = {
         'X_raw': tf.io.FixedLenFeature([], tf.string),
         'label': tf.io.FixedLenFeature([], tf.int64),
         'dim': tf.io.FixedLenFeature([], tf.int64),
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
-    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32),
-                      params['data_shape'])
+    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32), data_shape)
     label = tf.cast(features['label'], tf.int32)
     return data, label
 
 
-def parse_continuous_TFR(example_proto, params):
-    '''
-    Reads in Tensorflow Record object
+def parse_continuous_TFR(example_proto, data_shape):
+    """
+    Reads in Tensorflow Record object for continuous regression
     Parameters
     ----------
     example_proto
-    params
+    data_shape: tuple
 
     Returns
     -------
-
-    '''
+    data
+    label
+    """
     feature_description = {
         'X_raw': tf.io.FixedLenFeature([], tf.string),
         'label': tf.io.FixedLenFeature([], tf.float32),
         'dim': tf.io.FixedLenFeature([], tf.int64),
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
-    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32),
-                      params['data_shape'])
+    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32), data_shape)
     label = tf.cast(features['label'], tf.float32)
     return data, label
 
 
-def categorical_preprocess(data, label, params):
+def categorical_preprocess(data, label, n_classes):
     """
     Preprocesses data and label according to parameters for categorical data
     Parameters
     ----------
     data
     label
-    params
+    n_classes
 
     Returns
     -------
     Dataset dictionary to be passed to training
     """
     # Preprocess XRD - input should be on 0-1
-    num_classes = params['n_classes']
     # Moving from -1. to 1.
     data = tf.cast(data, tf.float32) * 2 - 1
-    label = tf.one_hot(label, num_classes)
+    label = tf.one_hot(label, n_classes)
 
     return {'X': data, 'label': label}
 
-def continuous_preprocess(data, label, params):
+
+def continuous_preprocess(data, label):
     """
     Preprocesses data and label according to parameters for continuous regression tasks
     Parameters
     ----------
     data
     label
-    params
 
     Returns
     -------
@@ -197,61 +197,69 @@ def continuous_preprocess(data, label, params):
     return {'X': data, 'label': label}
 
 
-def build_dataset(params):
+def build_dataset(*,
+                  dataset_paths,
+                  batch_size,
+                  multiprocessing,
+                  categorical,
+                  val_split,
+                  data_shape,
+                  n_classes=0):
     """
+    Constructs training dataset for categorical classification or continuous regression from
+    a list of tensorflow records
 
     Parameters
     ----------
-    params : dict
-    categorical : bool
-
-    Required Parameters in params
-    ----------
-    num_classes : integer
-    dataset_path : string or list of strings
-    batch_size : integer
-    latent_dim : integer
-        input noise dimension
-    multiprocessing : integer
-
+    dataset_paths: list of strings
+    batch_size: int
+    multiprocessing: int
+    categorical: bool
+    val_split: float
+        [0,1.) fraction of dataset used for validation. I.e. 0.2 gives and 80/20 train/val split.
+    data_shape: tuple
+    n_classes: int
+        Number of classes for classification (if categorical).
+        Defaults to 0 with no explicit assumption of classification.
 
     Returns
     -------
 
     """
-    check_paths = all([os.path.isfile(p) for p in params['dataset_path']])
-    assert check_paths, "Dataset path is invalid: {}".format(params['dataset_path'])
-    dataset = tf.data.TFRecordDataset(filenames=params['dataset_path'], num_parallel_reads=len(params['dataset_path']))
+    for path in dataset_paths:
+        if not Path(path).is_file():
+            raise RuntimeError("Dataset path is invalid: {}".format(path))
+    dataset = tf.data.TFRecordDataset(filenames=dataset_paths, num_parallel_reads=len(dataset_paths))
     dataset_size = sum(1 for _ in dataset)
-    train_size = int(dataset_size * (1-params['val_split']))
+    train_size = int(dataset_size * (1 - val_split))
     dataset = dataset.shuffle(100000, reshuffle_each_iteration=False)
-    if params['categorical']:
-        dataset = dataset.map(lambda e: parse_categorical_TFR(e, params),
-                              num_parallel_calls=params['multiprocessing'])
-        dataset = dataset.map(lambda d, l: categorical_preprocess(d, l, params),
-                              num_parallel_calls=params['multiprocessing'])
+    if categorical:
+        dataset = dataset.map(lambda e: parse_categorical_TFR(e, data_shape),
+                              num_parallel_calls=multiprocessing)
+        dataset = dataset.map(lambda d, l: categorical_preprocess(d, l, n_classes),
+                              num_parallel_calls=multiprocessing)
     else:
-        dataset = dataset.map(lambda e: parse_continuous_TFR(e, params),
-                              num_parallel_calls=params['multiprocessing'])
-        dataset = dataset.map(lambda d, l: continuous_preprocess(d, l, params),
-                              num_parallel_calls=params['multiprocessing'])
+        dataset = dataset.map(lambda e: parse_continuous_TFR(e, data_shape),
+                              num_parallel_calls=multiprocessing)
+        dataset = dataset.map(lambda d, l: continuous_preprocess(d, l),
+                              num_parallel_calls=multiprocessing)
     train_dataset = dataset.take(train_size)
     val_dataset = dataset.skip(train_size)
-    train_dataset = train_dataset.batch(params['batch_size'])
-    val_dataset = val_dataset.batch(params['batch_size'])
+    train_dataset = train_dataset.batch(batch_size)
+    val_dataset = val_dataset.batch(batch_size)
     train_dataset = train_dataset.prefetch(1)
     val_dataset = val_dataset.prefetch(1)
 
     return train_dataset, val_dataset
 
 
-def parse_exp_TFR(example_proto, params):
+def parse_exp_TFR(example_proto, data_shape):
     """
     Reads in Tensorflow Record object
     Parameters
     ----------
     example_proto
-    params
+    data_shape
 
     Returns
     -------
@@ -265,20 +273,20 @@ def parse_exp_TFR(example_proto, params):
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
     data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32),
-                      params['data_shape'])
+                      data_shape)
     label = tf.cast(features['str_label'], tf.string)
     fname = tf.cast(features['source_fname'], tf.string)
     return data, label, fname
 
 
-def test_preprocess(data, label, fname, params):
+def test_preprocess(data, label, fname):
     """
     Preprocesses data and label according to parameters
     Parameters
     ----------
     data
     label
-    params
+    fname
 
     Returns
     -------
@@ -290,33 +298,32 @@ def test_preprocess(data, label, fname, params):
     return {'X': data, 'label': label, 'fname': fname}
 
 
-def build_test_dataset(params):
+def build_test_dataset(*,
+                       dataset_path,
+                       multiprocessing,
+                       data_shape
+                       ):
     """
+    Builds categorical test dataset
 
     Parameters
     ----------
-    params
-
-    Required Parameters in params
-    ----------
-    num_classes : integer
-    dataset_path : string or list of strings
-    batch_size : integer
-    latent_dim : integer
-        input noise dimension
-    multiprocessing : integer
-
+    dataset_path: str, Path
+    multiprocessing: int
+    data_shape: tuple
 
     Returns
     -------
 
     """
-    assert os.path.isfile(params['dataset_path']), "Dataset path is invalid: {}".format(params['dataset_path'])
-    dataset = tf.data.TFRecordDataset(filenames=params['dataset_path'])
-    dataset = dataset.map(lambda e: parse_exp_TFR(e, params),
-                          num_parallel_calls=params['multiprocessing'])
-    dataset = dataset.map(lambda d, l, f: test_preprocess(d, l, f, params),
-                          num_parallel_calls=params['multiprocessing'])
+
+    if not Path(dataset_path).is_file():
+        raise RuntimeError("Dataset path is invalid: {}".format(dataset_path))
+    dataset = tf.data.TFRecordDataset(filenames=dataset_path)
+    dataset = dataset.map(lambda e: parse_exp_TFR(e, data_shape),
+                          num_parallel_calls=multiprocessing)
+    dataset = dataset.map(lambda d, l, f: test_preprocess(d, l, f),
+                          num_parallel_calls=multiprocessing)
     dataset = dataset.batch(1)
     dataset = dataset.prefetch(1)
 
