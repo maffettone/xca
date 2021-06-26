@@ -45,6 +45,8 @@ Thumbs.db
 .project
 .pydevproject
 .idea/*
+docs/*
+xca.egg-info
 
 # Directories to ignore #
 #######################
