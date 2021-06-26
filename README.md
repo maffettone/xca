@@ -97,4 +97,5 @@ conda activate xca
 git clone https://github.com/maffettone/xca
 cd xca
 python -m pip install -e -r requirements-dev.txt .
+pre-commit install
 ``` 
