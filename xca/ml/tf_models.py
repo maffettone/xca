@@ -53,6 +53,8 @@ def build_CNN_model(*,
         Dimensions of dense layers to follow convolutional model
     dense_dropout: float
         Dropout rate for final layer and all dense layers
+    kwargs:
+        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
 
     Returns
     -------
@@ -138,7 +140,8 @@ def model_training(model,
                    beta_1=0.5,
                    beta_2=0.999,
                    verbose=False,
-                   seed=None):
+                   seed=None,
+                   **kwargs):
     """
 
     Parameters
@@ -162,6 +165,8 @@ def model_training(model,
     beta_2: float
     verbose: bool
     seed: int
+    kwargs:
+        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
 
     Returns
     -------

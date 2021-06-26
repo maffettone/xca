@@ -13,7 +13,7 @@ def _default_CNN_hyperparameters():
         'dataset_paths': None,
         'verbose': True,
         'multiprocessing': 8,
-        'n_pochs': 10,
+        'n_epochs': 10,
         'out_dir': None,
         'checkpoint_rate': 2,
         'continue': False,
