@@ -3,9 +3,9 @@ repos:
     rev: stable
     hooks:
     - id: black
-      language_version: python3.6
+      language_version: python3.7
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v1.2.3
+    rev: v2.0.0
     hooks:
     - id: flake8
 -   repo: https://github.com/kynan/nbstripout
