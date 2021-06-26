@@ -328,3 +328,6 @@ def build_test_dataset(*,
     dataset = dataset.prefetch(1)
 
     return dataset
+
+def foo():
+    print('test')
