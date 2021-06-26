@@ -88,13 +88,14 @@ def build_CNN_model(*,
     return model
 
 
-def build_CNN_ensemble_model(ensemble_size,
-                             model_builder,
-                             *,
-                             data_shape,
-                             **kwargs):
+def build_fusion_ensemble_model(ensemble_size,
+                                model_builder,
+                                *,
+                                data_shape,
+                                **kwargs):
     """
-    Build's a simple averaging ensemble that connects multiple models by an averaging layer.
+    Build's a simple fusion ensemble that connects multiple models by an averaging layer.
+    The output of a fusion ensemble is the averaged output from all base estimators.
 
     Parameters
     ----------
@@ -243,4 +244,4 @@ def model_training(model,
                 f.write(str(result))
                 f.write('\n')
 
-    return results, model
+    return results
