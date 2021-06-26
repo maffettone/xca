@@ -10,10 +10,10 @@ def _default_CNN_hyperparameters():
         'n_classes': 5,
         'batch_size': 16,
         "data_shape": [2894, 1],
-        'dataset_path': None,
+        'dataset_paths': None,
         'verbose': True,
         'multiprocessing': 8,
-        'epochs': 10,
+        'n_epochs': 10,
         'out_dir': None,
         'checkpoint_rate': 2,
         'continue': False,
@@ -22,7 +22,7 @@ def _default_CNN_hyperparameters():
 
         # Classifier params
         'filters': [8, 8, 4],
-        'kernel_size': [5, 5, 5],
+        'kernel_sizes': [5, 5, 5],
         'strides': [2, 2, 2],
         'pool_sizes': [1, 1, 1],
         'batchnorm': False,

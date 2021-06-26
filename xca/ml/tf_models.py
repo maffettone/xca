@@ -15,146 +15,209 @@ from .tf_data_proc import build_dataset
 from pathlib import Path
 
 
-def build_CNN_model(params):
+def build_CNN_model(*,
+                    data_shape,
+                    filters,
+                    kernel_sizes,
+                    strides,
+                    ReLU_alpha,
+                    pool_sizes,
+                    batchnorm,
+                    n_classes,
+                    dense_dims=(),
+                    dense_dropout=0.,
+                    **kwargs
+                    ):
     """
     Builds single feed forward convolutional neural network for 1-d xrd data
+
     Parameters
     ----------
-    params : dict
-        complete hyper parameter dictionary for model generation and training
-
-    Required Parameters
-    ----------
-    n_classes : integer
-        number of classes or phases
-    data_shape : tuple
+    data_shape: tuple
         shape of input data XRD pattern (should be 2-d)
-    filters : list of integers
+    filters: list of int
         Consistent length with other items, number of filters for each Conv1D layer
-    kernel_size : list of integers
+    kernel_sizes: list of int
         Consistent length with other items, size of kernel for each Conv1D layer
-    strides : list of integers
+    strides: list of int
         Consistent length with other items, size of stride for each Conv1D layer
-    pool_sizes : list of integers
-        Consistent length with other items, size of pooling for each Conv1D layer
-    batchnorm : bool
-        Whether or not to include batchnorm after each convolutional downsample
-    dense_dropout : float
-        Dropout rate for final layer and all dense layers
-    dense_dims : list of integers
+    ReLU_alpha: float
+        [0.0, 1.0) decay for ReLU function
+    pool_sizes: list of int
+        Consistent length with other items, size of pooling for each AveragePool layer
+    batchnorm: bool
+        Turn batch normalization on or off
+    n_classes: int
+        Number of classes for classification
+    dense_dims: list of int
         Dimensions of dense layers to follow convolutional model
-    Refer to Keras documentation for below.
-    ReLU_alpha: float [0, 1.0)
-    lr : float [0, 1.0)
-    beta_1: float [0, 1.0)
-    beta_2: float [0, 1.0)
+    dense_dropout: float
+        Dropout rate for final layer and all dense layers
+    kwargs:
+        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
+
     Returns
     -------
-    model
-    """
+    model: Model
 
-    x_in = Input(shape=params['data_shape'], name='X')
+    """
+    x_in = Input(shape=data_shape, name='X')
     x = tf.identity(x_in)
     # Downsampling
-    for i in range(len(params['filters'])):
-        x = Conv1D(params['filters'][i],
-                   params['kernel_size'][i],
-                   strides=params['strides'][i],
+    for i in range(len(filters)):
+        x = Conv1D(filters[i],
+                   kernel_sizes[i],
+                   strides=strides[i],
                    padding='valid',
                    kernel_initializer=RandomNormal(0, 0.02),
                    name="conv_{}".format(i))(x)
-        x = LeakyReLU(alpha=params['ReLU_alpha'])(x)
-        x = AveragePooling1D(pool_size=params['pool_sizes'][i],
+        x = LeakyReLU(alpha=ReLU_alpha)(x)
+        x = AveragePooling1D(pool_size=pool_sizes[i],
                              strides=None,
                              padding='same')(x)
-        if params['batchnorm']:
+        if batchnorm:
             x = BatchNormalization(axis=-1, name="batchnorm_{}".format(i))(x)
 
     # Flatten and output
     x = Flatten()(x)
-    x = Dropout(params['dense_dropout'])(x)
-    for i, dim in enumerate(params['dense_dims']):
+    x = Dropout(dense_dropout)(x)
+    for i, dim in enumerate(dense_dims):
         x = Dense(dim, activation='relu', name='dense_{}'.format(i))(x)
-        x = Dropout(params['dense_dropout'])(x)
-    x = Dense(params['n_classes'], activation='softmax', name="Discriminator")(x)
+        x = Dropout(dense_dropout)(x)
+    x = Dense(n_classes, activation='softmax', name="Discriminator")(x)
 
     model = Model(x_in, x)
     return model
 
 
-def build_CNN_ensemble_model(params):
+def build_fusion_ensemble_model(ensemble_size,
+                                model_builder,
+                                *,
+                                data_shape,
+                                **kwargs):
     """
-    Builds ensemble of FFCNN's
+    Build's a simple fusion ensemble that connects multiple models by an averaging layer.
+    The output of a fusion ensemble is the averaged output from all base estimators.
+
     Parameters
     ----------
-    params : dict
-        complete hyper parameter dictionary for model generation and training
-
-    Required Parameters
-    ----------
-    ensemble_size : integer
-        Number of feed forward CNNs based on params to include in ensemble
+    ensemble_size: int
+        Size of the ensemble
+    model_builder: Callable
+    data_shape: tuple
+    kwargs: dict
+        Keyword arguments for model_builder
 
     Returns
     -------
-    model
-
+    model: Model
+        Ensemble model
     """
-    x_in = Input(shape=params['data_shape'], name='X')
+    x_in = Input(shape=data_shape, name='X')
     members = []
-    for i in range(params['ensemble_size']):
-        m = build_CNN_model(params)
+    for i in range(ensemble_size):
+        m = model_builder(data_shape=data_shape,
+                          **kwargs)
         members.append(m(x_in))
     outputs = Average()(members)
     model = Model(x_in, outputs)
     return model
 
 
-def CNN_training(params):
+def model_training(model,
+                   *,
+                   dataset_paths,
+                   out_dir,
+                   batch_size,
+                   lr,
+                   multiprocessing,
+                   categorical,
+                   data_shape,
+                   n_epochs,
+                   n_classes=0,
+                   val_split=0.2,
+                   checkpoint_rate=1,
+                   beta_1=0.5,
+                   beta_2=0.999,
+                   verbose=False,
+                   seed=None,
+                   **kwargs):
+    """
+
+    Parameters
+    ----------
+    model: Model
+        Tensorflow model
+        Inputs:  'X'
+        Outputs: y_pred
+    dataset_paths: list of str, list of Path
+    out_dir: str, Path
+    batch_size: int
+    lr: float
+    multiprocessing: int
+    categorical: bool
+    data_shape: tuple
+    n_epochs: int
+    n_classes: int
+    val_split: float
+    checkpoint_rate: int
+    beta_1: float
+    beta_2: float
+    verbose: bool
+    seed: int
+    kwargs:
+        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
+
+    Returns
+    -------
+
+    """
     start_time = time.time()
-    if 'seed' in params and params['seed']:
-        np.random.seed(params['seed'])
-        tf.random.set_seed(params['seed'])
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
 
-    Path(params['out_dir']).mkdir(exist_ok=True, parents=True)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
 
-    if params['ensemble_size'] > 1:
-        CNN = build_CNN_ensemble_model(params)
-    else:
-        CNN = build_CNN_model(params)
-    if params['verbose']:
-        CNN.summary()
+    if verbose:
+        model.summary()
 
     # Build dataset
-    dataset, val_dataset = build_dataset(params)
+    dataset, val_dataset = build_dataset(dataset_paths=dataset_paths,
+                                         batch_size=batch_size,
+                                         multiprocessing=multiprocessing,
+                                         categorical=categorical,
+                                         val_split=val_split,
+                                         data_shape=data_shape,
+                                         n_classes=n_classes
+                                         )
 
     cross_entropy = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
 
-    optimizer = Adam(lr=params['lr'], beta_1=params['beta_1'], beta_2=params['beta_2'])
+    optimizer = Adam(lr=lr, beta_1=beta_1, beta_2=beta_2)
 
     # Checkpoints
-    checkpoint_dir = str(Path(params['out_dir']) / 'training_checkpoints')
+    checkpoint_dir = str(Path(out_dir) / 'training_checkpoints')
     checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
     checkpoint = tf.train.Checkpoint(optimizer=optimizer,
-                                     CNN=CNN)
+                                     model=model)
 
     @tf.function
     def train_step(batch):
         with tf.GradientTape() as tape:
-            y_pred = CNN({'X': batch['X']}, training=True)
+            y_pred = model({'X': batch['X']}, training=True)
             loss = cross_entropy(batch['label'], y_pred)
-        gradients = tape.gradient(loss, CNN.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, CNN.trainable_variables))
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss, y_pred
 
     @tf.function
     def val_step(batch):
-        y_pred = CNN({'X': batch['X']}, training=False)
+        y_pred = model({'X': batch['X']}, training=False)
         return y_pred
 
     # Actual training
     results = {'loss': [], 'train_acc': [], 'val_acc': []}
-    for epoch in range(params['epochs']):
+    for epoch in range(n_epochs):
         train_accuracy = tf.keras.metrics.CategoricalAccuracy()
         val_accuracy = tf.keras.metrics.CategoricalAccuracy()
         results['loss'].append(0.)
@@ -172,18 +235,18 @@ def CNN_training(params):
         results['val_acc'].append(val_accuracy.result().numpy())
 
         # Save the model every set epochs
-        if (epoch + 1) % params['checkpoint_rate'] == 0:
+        if (epoch + 1) % checkpoint_rate == 0:
             checkpoint.save(file_prefix=checkpoint_prefix)
-        if params['verbose']:
+        if verbose:
             print('Time for epoch {} is {} sec'.format(epoch + 1, time.time() - start))
-    if params['verbose']:
+    if verbose:
         print()
         print('Time for full training is {} sec'.format(time.time() - start_time))
 
     for key in results:
-        with open(Path(params['out_dir']) / (key + '.txt'), 'w') as f:
+        with open(Path(out_dir) / (key + '.txt'), 'w') as f:
             for result in results[key]:
                 f.write(str(result))
                 f.write('\n')
 
-    return results, CNN
+    return results

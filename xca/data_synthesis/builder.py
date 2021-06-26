@@ -1,11 +1,13 @@
 """
+A set of convenience functions to aid in generating XRD patterns from dictionaries of parameters using the cctbx.
 @author: maffettone
 """
-
+import os
 from pathlib import Path
 import json
 import numpy as np
 import xarray as xa
+from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
 
 default_params = {
     'input_cif': None,
@@ -23,8 +25,8 @@ default_params = {
     'instrument_radius': 174.8,
     'offset_height': 0.001,
     # Pattern linspace
-    '2theta_min': 10.,
-    '2theta_max': 110.,
+    'tth_min': 10.,
+    'tth_max': 110.,
     'n_datapoints': 5000,
     # Peak Profile
     'U': 0.1,
@@ -41,8 +43,8 @@ default_params = {
     'bkg_2': 0.,
     'bkg_1': 0.,
     'bkg_0': 0.,
-    'bkg_-1': 0.,
-    'bkg_-2': 0.,
+    'bkg_n1': 0.,
+    'bkg_n2': 0.,
     'bkg_ea': 0.,
     'bkg_eb': 0.,
     # Noise
@@ -88,6 +90,10 @@ def metadata_adjustments(da):
         del da.attrs["verbose"]
     if isinstance(da.attrs["wavelength"], list):
         da.attrs["wavelength"], da.attrs["wavelength_weight"] = zip(*da.attrs["wavelength"])
+    # Clean up any others to fix type for netcdf
+    for key, value in da.attrs.items():
+        if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
+            da.attrs[key] = str(value)
     return
 
 
@@ -95,15 +101,25 @@ def concat_and_clean(da_list):
     """Concatenate and clean the attributes of a list of datarrays for output"""
     da = xa.concat(da_list, dim="idx", combine_attrs="drop_conflicts")
     metadata_adjustments(da)
-    for key, value in da.attrs.items():
-        if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
-            da.attrs[key] = str(value)
     return da
 
 
+def complete_profile_wrapper(kwargs):
+    return create_complete_profile(**kwargs)
+
+
+def multi_wavelength_wrapper(kwargs):
+    wavelengths = kwargs.pop("wavelength")
+    return sum_multi_wavelength_profiles(wavelengths, **kwargs)
+
+
+def multi_phase_wrapper(kwargs):
+    input_cifs = kwargs.pop("input_cif")
+    return multi_phase_profile(input_cifs, **kwargs)
+
+
 def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
-                 march_range=(0., 1.), preferred_axes=None,
-                 sample_height=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
+                 march_range=(0., 1.), preferred_axes=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
     """
     Generates n_profiles of profiles for a single cif.
     Outputs can be a directory containing many individual numpy files, a bulk numpy file, or a bulk csv.
@@ -132,8 +148,6 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         range of march parameters to choose on uniform dist
     preferred_axes: list of tuples
         HKL for preferred axes to randomly select from
-    sample_height: tuple
-        range of sample heights to choose on a uniform dist
     noise_exp: tuple
         range of exponents noise to choose on uniform dist (log noise)
     n_jobs: int
@@ -149,8 +163,8 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     """
 
     from pathlib import Path
-    from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     import random
+    from multiprocessing import Pool
 
     # Checks for output availability
     path = Path(output_path)
@@ -159,7 +173,7 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     # Load default dictionary and linspace
     _default = load_params(input_params)
-    _x = np.linspace(_default['2theta_min'], _default['2theta_max'], num=_default['n_datapoints'])
+    _x = np.linspace(_default['tth_min'], _default['tth_max'], num=_default['n_datapoints'])
 
     # Assemble list of parameters
     params_list = []
@@ -177,38 +191,29 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
                 parameters['Y'] = np.random.uniform(np.abs(parameters['X']), a)
                 test_y = parameters['U'] * (np.tan(_x) ** 2) + parameters['V'] * np.tan(_x) + parameters['W']
         parameters['march_parameter'] = np.random.uniform(*march_range)
-        if sample_height:
-            parameters['offset_height'] = np.random.uniform(*sample_height)
         if preferred_axes:
             parameters['preferred'] = random.choice(preferred_axes)
         if noise_exp:
             parameters['noise_std'] = 10 ** np.random.uniform(*noise_exp)
-        for i in range(-2, 7):
+        for i in range(7):
             parameters['bkg_{}'.format(i)] = np.random.uniform(0, _default['bkg_{}'.format(i)])
+        for i in range(-2, 0):
+            parameters['bkg_n{}'.format(abs(i))] = np.random.uniform(0, _default['bkg_n{}'.format(abs(i))])
         for key in kwargs:
             parameters[key] = np.random.uniform(*kwargs[key])
         params_list.append(parameters)
 
-    if n_jobs > 1:
-        from multiprocessing import Pool
-        pool = Pool(n_jobs)
-        if isinstance(parameters['input_cif'], list):
-            results = list(pool.imap_unordered(multi_phase_profile, params_list))
-        elif isinstance(parameters['wavelength'], list):
-            results = list(pool.imap_unordered(sum_multi_wavelength_profiles, params_list))
-        else:
-            results = list(pool.imap_unordered(create_complete_profile, params_list))
-        pool.close()
-        pool.join()
+    if n_jobs <= 0:
+        n_jobs = os.cpu_count()
+    pool = Pool(n_jobs)
+    if isinstance(_default['input_cif'], list):
+        results = list(pool.imap_unordered(multi_phase_wrapper, params_list))
+    elif isinstance(_default['wavelength'], list):
+        results = list(pool.imap_unordered(multi_wavelength_wrapper, params_list))
     else:
-        results = list()
-        for parameters in params_list:
-            if isinstance(parameters['input_cif'], list):
-                results.append(multi_phase_profile(parameters))
-            elif isinstance(parameters['wavelength'], list):
-                results.append(sum_multi_wavelength_profiles(parameters))
-            else:
-                results.append(create_complete_profile(parameters))
+        results = list(pool.imap_unordered(complete_profile_wrapper, params_list))
+    pool.close()
+    pool.join()
 
     if path.is_dir():
         for idx, da in enumerate(results):
@@ -248,9 +253,8 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     -------
     da : DataArray
     """
-    from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
     parameters = load_params(input_params)
-    _x = np.linspace(parameters['2theta_min'], parameters['2theta_max'], num=parameters['n_datapoints'])
+    _x = np.linspace(parameters['tth_min'], parameters['tth_max'], num=parameters['n_datapoints'])
     test_y = np.zeros_like(_x) - 1
 
     if shape_limit:
@@ -265,11 +269,11 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     for key in kwargs:
         parameters[key] = np.random.uniform(*kwargs[key])
     if isinstance(parameters['input_cif'], list):
-        da = multi_phase_profile(parameters)
+        da = multi_phase_wrapper(parameters)
     elif isinstance(parameters['wavelength'], list):
-        da = sum_multi_wavelength_profiles(parameters)
+        da = multi_wavelength_wrapper(parameters)
     else:
-        da = create_complete_profile(parameters)
+        da = complete_profile_wrapper(parameters)
 
     metadata_adjustments(da)
     return da

@@ -8,12 +8,12 @@
     "n_classes": 4,
     "batch_size": 16,
     "data_shape": [3488, 1],
-    "dataset_path": [
+    "dataset_paths": [
         "./tmp/BaTiO.tfrecords"
                     ],
     "verbose": true,
     "multiprocessing": 16,
-    "epochs": 8,
+    "n_epochs": 8,
     "out_dir": "./tmp/BaTiO",
     "checkpoint_rate": 2,
     "continue": false,
@@ -21,7 +21,7 @@
     "ensemble_size": 50,
 
     "filters": [8, 8, 4],
-    "kernel_size": [5,5,5],
+    "kernel_sizes": [5,5,5],
     "strides": [2,2,2],
     "pool_sizes": [1, 1, 1],
     "batchnorm": false,

@@ -9,7 +9,7 @@ def get_reflections(cif_path, tth_min, tth_max, wavelength):
     data = load_cif(cif_path)
     sf = calc_structure_factor(data['structure'])
     scattering = convert_to_numpy(sf, wavelength=wavelength, tth_max=tth_max, tth_min=tth_min)
-    reflections = zip(scattering['hkl'], scattering['2theta'], scattering['I'])
+    reflections = zip(scattering.hkl, scattering.tth, scattering.I)
     keep = []
     for reflection in reflections:
         if reflection[1] < tth_max and reflection[1] > tth_min and reflection[2] > 1:
@@ -88,7 +88,7 @@ def pattern_simulation(n_patterns, system='BaTiO'):
         phase = cif.stem
         d[phase] = idx
         param_dict['input_cif'] = cif
-        output_path = Path('tmp') / f'{system}' / str(idx)
+        output_path = Path('tmp') / f'{system}'
         output_path.mkdir(parents=True, exist_ok=True)
         cycle_params(n_patterns,
                      output_path,
@@ -97,5 +97,6 @@ def pattern_simulation(n_patterns, system='BaTiO'):
                      shape_limit=shape_limit,
                      sample_height=sample_height,
                      preferred_axes=reflections[phase],
+                     start_idx=idx*n_patterns,
                      **kwargs)
     return d
