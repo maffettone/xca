@@ -96,6 +96,6 @@ conda create -n xca -c conda-forge cctbx-base tensorflow-gpu=2.XXX
 conda activate xca
 git clone https://github.com/maffettone/xca
 cd xca
-python -m pip install -e -r requirements-dev.txt .
+python -m pip install -e . -r requirements-dev.txt  
 pre-commit install
 ``` 
