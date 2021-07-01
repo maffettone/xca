@@ -1,11 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
 from pathlib import Path
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
 import xarray as xr
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
 def _int64_feature(value):
@@ -24,6 +24,7 @@ def _float_feature(value):
 def np_dir_to_record(npy_path, tfr_path, shuffle=True):
     """Depreceated categorial dir to tfrecord for numpy data"""
     import random
+
     fnames = list(Path(npy_path).glob("*/*.npy"))
     if not fnames:
         raise RuntimeError(f"Path is empty: {npy_path.absolute()}")
@@ -37,15 +38,22 @@ def np_dir_to_record(npy_path, tfr_path, shuffle=True):
         X = np.load(fname)
         dim = X.shape[0]
         X_raw = X.astype(np.float32).tostring()
-        example = tf.train.Example(features=tf.train.Features(feature={
-            'X_raw': _bytes_feature(X_raw),
-            'dim': _int64_feature(dim),
-            'label': _int64_feature(int(label))}))
+        example = tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "X_raw": _bytes_feature(X_raw),
+                    "dim": _int64_feature(dim),
+                    "label": _int64_feature(int(label)),
+                }
+            )
+        )
         writer.write(example.SerializeToString())
     writer.close()
 
 
-def xr_dir_to_record(xr_path, tfr_path, attrs_key, transform=_float_feature, shuffle=True):
+def xr_dir_to_record(
+    xr_path, tfr_path, attrs_key, transform=_float_feature, shuffle=True
+):
     """
     Consumes a directory of xarrays to produce a tfrecord.
     The 'label' of the dataset will correspond to the attribute.
@@ -69,6 +77,7 @@ def xr_dir_to_record(xr_path, tfr_path, attrs_key, transform=_float_feature, shu
 
     """
     import random
+
     fnames = list(Path(xr_path).glob("*.nc"))
     if not fnames:
         raise RuntimeError(f"Path is empty: {xr_path.absolute()}")
@@ -82,10 +91,15 @@ def xr_dir_to_record(xr_path, tfr_path, attrs_key, transform=_float_feature, shu
         dim = X.shape[0]
         X_raw = X.data.astype(np.float32).tobytes()
         label = X.attrs[attrs_key]
-        example = tf.train.Example(features=tf.train.Features(feature={
-            'X_raw': _bytes_feature(X_raw),
-            'dim': _int64_feature(dim),
-            'label': transform(label)}))
+        example = tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "X_raw": _bytes_feature(X_raw),
+                    "dim": _int64_feature(dim),
+                    "label": transform(label),
+                }
+            )
+        )
         writer.write(example.SerializeToString())
     writer.close()
 
@@ -100,11 +114,16 @@ def exp2TFR(fnames, tfr_path):
         X = np.load(fname)
         dim = X.shape[0]
         X_raw = X.astype(np.float32).tostring()
-        example = tf.train.Example(features=tf.train.Features(feature={
-            'X_raw': _bytes_feature(X_raw),
-            'dim': _int64_feature(dim),
-            'str_label': _bytes_feature(str.encode(label)),
-            'source_fname': _bytes_feature(str.encode(source_fname))}))
+        example = tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    "X_raw": _bytes_feature(X_raw),
+                    "dim": _int64_feature(dim),
+                    "str_label": _bytes_feature(str.encode(label)),
+                    "source_fname": _bytes_feature(str.encode(source_fname)),
+                }
+            )
+        )
         writer.write(example.SerializeToString())
     writer.close()
 
@@ -124,13 +143,13 @@ def parse_categorical_TFR(example_proto, data_shape):
 
     """
     feature_description = {
-        'X_raw': tf.io.FixedLenFeature([], tf.string),
-        'label': tf.io.FixedLenFeature([], tf.int64),
-        'dim': tf.io.FixedLenFeature([], tf.int64),
+        "X_raw": tf.io.FixedLenFeature([], tf.string),
+        "label": tf.io.FixedLenFeature([], tf.int64),
+        "dim": tf.io.FixedLenFeature([], tf.int64),
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
-    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32), data_shape)
-    label = tf.cast(features['label'], tf.int32)
+    data = tf.reshape(tf.io.decode_raw(features["X_raw"], tf.float32), data_shape)
+    label = tf.cast(features["label"], tf.int32)
     return data, label
 
 
@@ -148,13 +167,13 @@ def parse_continuous_TFR(example_proto, data_shape):
     label
     """
     feature_description = {
-        'X_raw': tf.io.FixedLenFeature([], tf.string),
-        'label': tf.io.FixedLenFeature([], tf.float32),
-        'dim': tf.io.FixedLenFeature([], tf.int64),
+        "X_raw": tf.io.FixedLenFeature([], tf.string),
+        "label": tf.io.FixedLenFeature([], tf.float32),
+        "dim": tf.io.FixedLenFeature([], tf.int64),
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
-    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32), data_shape)
-    label = tf.cast(features['label'], tf.float32)
+    data = tf.reshape(tf.io.decode_raw(features["X_raw"], tf.float32), data_shape)
+    label = tf.cast(features["label"], tf.float32)
     return data, label
 
 
@@ -176,7 +195,7 @@ def categorical_preprocess(data, label, n_classes):
     data = tf.cast(data, tf.float32) * 2 - 1
     label = tf.one_hot(label, n_classes)
 
-    return {'X': data, 'label': label}
+    return {"X": data, "label": label}
 
 
 def continuous_preprocess(data, label):
@@ -194,17 +213,19 @@ def continuous_preprocess(data, label):
     # Preprocess XRD - input should be on 0-1
     # Moving from -1. to 1.
     data = tf.cast(data, tf.float32) * 2 - 1
-    return {'X': data, 'label': label}
+    return {"X": data, "label": label}
 
 
-def build_dataset(*,
-                  dataset_paths,
-                  batch_size,
-                  multiprocessing,
-                  categorical,
-                  val_split,
-                  data_shape,
-                  n_classes=0):
+def build_dataset(
+    *,
+    dataset_paths,
+    batch_size,
+    multiprocessing,
+    categorical,
+    val_split,
+    data_shape,
+    n_classes=0,
+):
     """
     Constructs training dataset for categorical classification or continuous regression from
     a list of tensorflow records
@@ -229,20 +250,29 @@ def build_dataset(*,
     for path in dataset_paths:
         if not Path(path).is_file():
             raise RuntimeError("Dataset path is invalid: {}".format(path))
-    dataset = tf.data.TFRecordDataset(filenames=dataset_paths, num_parallel_reads=len(dataset_paths))
+    dataset = tf.data.TFRecordDataset(
+        filenames=dataset_paths, num_parallel_reads=len(dataset_paths)
+    )
     dataset_size = sum(1 for _ in dataset)
     train_size = int(dataset_size * (1 - val_split))
     dataset = dataset.shuffle(100000, reshuffle_each_iteration=False)
     if categorical:
-        dataset = dataset.map(lambda e: parse_categorical_TFR(e, data_shape),
-                              num_parallel_calls=multiprocessing)
-        dataset = dataset.map(lambda d, l: categorical_preprocess(d, l, n_classes),
-                              num_parallel_calls=multiprocessing)
+        dataset = dataset.map(
+            lambda e: parse_categorical_TFR(e, data_shape),
+            num_parallel_calls=multiprocessing,
+        )
+        dataset = dataset.map(
+            lambda d, l: categorical_preprocess(d, l, n_classes),
+            num_parallel_calls=multiprocessing,
+        )
     else:
-        dataset = dataset.map(lambda e: parse_continuous_TFR(e, data_shape),
-                              num_parallel_calls=multiprocessing)
-        dataset = dataset.map(lambda d, l: continuous_preprocess(d, l),
-                              num_parallel_calls=multiprocessing)
+        dataset = dataset.map(
+            lambda e: parse_continuous_TFR(e, data_shape),
+            num_parallel_calls=multiprocessing,
+        )
+        dataset = dataset.map(
+            lambda d, l: continuous_preprocess(d, l), num_parallel_calls=multiprocessing
+        )
     train_dataset = dataset.take(train_size)
     val_dataset = dataset.skip(train_size)
     train_dataset = train_dataset.batch(batch_size)
@@ -266,16 +296,15 @@ def parse_exp_TFR(example_proto, data_shape):
 
     """
     feature_description = {
-        'X_raw': tf.io.FixedLenFeature([], tf.string),
-        'str_label': tf.io.FixedLenFeature([], tf.string),
-        'dim': tf.io.FixedLenFeature([], tf.int64),
-        'source_fname': tf.io.FixedLenFeature([], tf.string)
+        "X_raw": tf.io.FixedLenFeature([], tf.string),
+        "str_label": tf.io.FixedLenFeature([], tf.string),
+        "dim": tf.io.FixedLenFeature([], tf.int64),
+        "source_fname": tf.io.FixedLenFeature([], tf.string),
     }
     features = tf.io.parse_single_example(example_proto, feature_description)
-    data = tf.reshape(tf.io.decode_raw(features['X_raw'], tf.float32),
-                      data_shape)
-    label = tf.cast(features['str_label'], tf.string)
-    fname = tf.cast(features['source_fname'], tf.string)
+    data = tf.reshape(tf.io.decode_raw(features["X_raw"], tf.float32), data_shape)
+    label = tf.cast(features["str_label"], tf.string)
+    fname = tf.cast(features["source_fname"], tf.string)
     return data, label, fname
 
 
@@ -295,14 +324,10 @@ def test_preprocess(data, label, fname):
     # Preprocess XRD - input should be on 0-1
     # Moving to -1. to 1.
     data = tf.cast(data, tf.float32) / tf.math.reduce_max(data) * 2 - 1
-    return {'X': data, 'label': label, 'fname': fname}
+    return {"X": data, "label": label, "fname": fname}
 
 
-def build_test_dataset(*,
-                       dataset_path,
-                       multiprocessing,
-                       data_shape
-                       ):
+def build_test_dataset(*, dataset_path, multiprocessing, data_shape):
     """
     Builds categorical test dataset
 
@@ -320,10 +345,12 @@ def build_test_dataset(*,
     if not Path(dataset_path).is_file():
         raise RuntimeError("Dataset path is invalid: {}".format(dataset_path))
     dataset = tf.data.TFRecordDataset(filenames=dataset_path)
-    dataset = dataset.map(lambda e: parse_exp_TFR(e, data_shape),
-                          num_parallel_calls=multiprocessing)
-    dataset = dataset.map(lambda d, l, f: test_preprocess(d, l, f),
-                          num_parallel_calls=multiprocessing)
+    dataset = dataset.map(
+        lambda e: parse_exp_TFR(e, data_shape), num_parallel_calls=multiprocessing
+    )
+    dataset = dataset.map(
+        lambda d, l, f: test_preprocess(d, l, f), num_parallel_calls=multiprocessing
+    )
     dataset = dataset.batch(1)
     dataset = dataset.prefetch(1)
 

@@ -7,50 +7,57 @@ from pathlib import Path
 import json
 import numpy as np
 import xarray as xa
-from xca.data_synthesis.cctbx import create_complete_profile, sum_multi_wavelength_profiles, multi_phase_profile
+from xca.data_synthesis.cctbx import (
+    create_complete_profile,
+    sum_multi_wavelength_profiles,
+    multi_phase_profile,
+)
 
 default_params = {
-    'input_cif': None,
-    'wavelength': [(1.54060, 0.5), (1.54439, 0.5)],  # List of tuples (lambda, fraction), or single value
+    "input_cif": None,
+    "wavelength": [
+        (1.54060, 0.5),
+        (1.54439, 0.5),
+    ],  # List of tuples (lambda, fraction), or single value
     # Aditional Debye-Waller factors
-    'debye_waller_factors': (),
+    "debye_waller_factors": (),
     # SHELX extinction correction
-    'extinction_correction_x': 0,
+    "extinction_correction_x": 0,
     # Preferred orientaiton and march parameter
-    'preferred': [],
-    'march_parameter': 1,
+    "preferred": [],
+    "march_parameter": 1,
     # LP factor
-    'theta_m': 26.6,
+    "theta_m": 26.6,
     # Radius and Sample offset
-    'instrument_radius': 174.8,
-    'offset_height': 0.001,
+    "instrument_radius": 174.8,
+    "offset_height": 0.001,
     # Pattern linspace
-    'tth_min': 10.,
-    'tth_max': 110.,
-    'n_datapoints': 5000,
+    "tth_min": 10.0,
+    "tth_max": 110.0,
+    "n_datapoints": 5000,
     # Peak Profile
-    'U': 0.1,
-    'V': 0.1,
-    'W': 0.1,
-    'X': 0.1,
-    'Y': 0.1,
-    'Z': 0.0,
+    "U": 0.1,
+    "V": 0.1,
+    "W": 0.1,
+    "X": 0.1,
+    "Y": 0.1,
+    "Z": 0.0,
     # Background
-    'bkg_6': 0.,
-    'bkg_5': 0.,
-    'bkg_4': 0.,
-    'bkg_3': 0.,
-    'bkg_2': 0.,
-    'bkg_1': 0.,
-    'bkg_0': 0.,
-    'bkg_n1': 0.,
-    'bkg_n2': 0.,
-    'bkg_ea': 0.,
-    'bkg_eb': 0.,
+    "bkg_6": 0.0,
+    "bkg_5": 0.0,
+    "bkg_4": 0.0,
+    "bkg_3": 0.0,
+    "bkg_2": 0.0,
+    "bkg_1": 0.0,
+    "bkg_0": 0.0,
+    "bkg_n1": 0.0,
+    "bkg_n2": 0.0,
+    "bkg_ea": 0.0,
+    "bkg_eb": 0.0,
     # Noise
-    'noise_std': 0,
+    "noise_std": 0,
     # Extras`
-    'verbose': False
+    "verbose": False,
 }
 
 
@@ -72,7 +79,7 @@ def load_params(input_params=None):
     parameters = {}
     parameters.update(default_params)
     try:
-        with open(input_params, 'r') as f:
+        with open(input_params, "r") as f:
             d = json.load(f)
             parameters.update(d)
     except TypeError:
@@ -89,7 +96,9 @@ def metadata_adjustments(da):
     if "verbose" in da.attrs:
         del da.attrs["verbose"]
     if isinstance(da.attrs["wavelength"], list):
-        da.attrs["wavelength"], da.attrs["wavelength_weight"] = zip(*da.attrs["wavelength"])
+        da.attrs["wavelength"], da.attrs["wavelength_weight"] = zip(
+            *da.attrs["wavelength"]
+        )
     # Clean up any others to fix type for netcdf
     for key, value in da.attrs.items():
         if not isinstance(value, (str, np.ndarray, np.number, list, tuple)):
@@ -118,8 +127,18 @@ def multi_phase_wrapper(kwargs):
     return multi_phase_profile(input_cifs, **kwargs)
 
 
-def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
-                 march_range=(0., 1.), preferred_axes=None, noise_exp=None, n_jobs=1, start_idx=0, **kwargs):
+def cycle_params(
+    n_profiles,
+    output_path,
+    input_params=None,
+    shape_limit=0.0,
+    march_range=(0.0, 1.0),
+    preferred_axes=None,
+    noise_exp=None,
+    n_jobs=1,
+    start_idx=0,
+    **kwargs,
+):
     """
     Generates n_profiles of profiles for a single cif.
     Outputs can be a directory containing many individual numpy files, a bulk numpy file, or a bulk csv.
@@ -168,12 +187,14 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
 
     # Checks for output availability
     path = Path(output_path)
-    if not (path.is_dir or path.suffix in ['.npy', '.csv', ".nc"]):
+    if not (path.is_dir or path.suffix in [".npy", ".csv", ".nc"]):
         raise TypeError("Output path type not implemented: {}".format(path))
 
     # Load default dictionary and linspace
     _default = load_params(input_params)
-    _x = np.linspace(_default['tth_min'], _default['tth_max'], num=_default['n_datapoints'])
+    _x = np.linspace(
+        _default["tth_min"], _default["tth_max"], num=_default["n_datapoints"]
+    )
 
     # Assemble list of parameters
     params_list = []
@@ -184,21 +205,29 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
             test_y = np.zeros_like(_x) - 1
             a = shape_limit
             while any(test_y < 0):
-                parameters['U'] = np.random.uniform(-a, a)
-                parameters['V'] = np.random.uniform(-a, a)
-                parameters['W'] = np.random.uniform(-a, a)
-                parameters['X'] = np.random.uniform(-a, a)
-                parameters['Y'] = np.random.uniform(np.abs(parameters['X']), a)
-                test_y = parameters['U'] * (np.tan(_x) ** 2) + parameters['V'] * np.tan(_x) + parameters['W']
-        parameters['march_parameter'] = np.random.uniform(*march_range)
+                parameters["U"] = np.random.uniform(-a, a)
+                parameters["V"] = np.random.uniform(-a, a)
+                parameters["W"] = np.random.uniform(-a, a)
+                parameters["X"] = np.random.uniform(-a, a)
+                parameters["Y"] = np.random.uniform(np.abs(parameters["X"]), a)
+                test_y = (
+                    parameters["U"] * (np.tan(_x) ** 2)
+                    + parameters["V"] * np.tan(_x)
+                    + parameters["W"]
+                )
+        parameters["march_parameter"] = np.random.uniform(*march_range)
         if preferred_axes:
-            parameters['preferred'] = random.choice(preferred_axes)
+            parameters["preferred"] = random.choice(preferred_axes)
         if noise_exp:
-            parameters['noise_std'] = 10 ** np.random.uniform(*noise_exp)
+            parameters["noise_std"] = 10 ** np.random.uniform(*noise_exp)
         for i in range(7):
-            parameters['bkg_{}'.format(i)] = np.random.uniform(0, _default['bkg_{}'.format(i)])
+            parameters["bkg_{}".format(i)] = np.random.uniform(
+                0, _default["bkg_{}".format(i)]
+            )
         for i in range(-2, 0):
-            parameters['bkg_n{}'.format(abs(i))] = np.random.uniform(0, _default['bkg_n{}'.format(abs(i))])
+            parameters["bkg_n{}".format(abs(i))] = np.random.uniform(
+                0, _default["bkg_n{}".format(abs(i))]
+            )
         for key in kwargs:
             parameters[key] = np.random.uniform(*kwargs[key])
         params_list.append(parameters)
@@ -206,9 +235,9 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
     if n_jobs <= 0:
         n_jobs = os.cpu_count()
     pool = Pool(n_jobs)
-    if isinstance(_default['input_cif'], list):
+    if isinstance(_default["input_cif"], list):
         results = list(pool.imap_unordered(multi_phase_wrapper, params_list))
-    elif isinstance(_default['wavelength'], list):
+    elif isinstance(_default["wavelength"], list):
         results = list(pool.imap_unordered(multi_wavelength_wrapper, params_list))
     else:
         results = list(pool.imap_unordered(complete_profile_wrapper, params_list))
@@ -219,21 +248,28 @@ def cycle_params(n_profiles, output_path, input_params=None, shape_limit=0.,
         for idx, da in enumerate(results):
             metadata_adjustments(da)
             da.to_netcdf(path / f"{start_idx+idx}.nc")
-    elif path.suffix == '.npy':
+    elif path.suffix == ".npy":
         np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
-    elif path.suffix == '.csv':
+    elif path.suffix == ".csv":
         cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
-        np.savetxt(str(output_path), np.stack([da.data for da in results], axis=-1),
-                   delimiter=',', header=",".join(cols), comments='')
+        np.savetxt(
+            str(output_path),
+            np.stack([da.data for da in results], axis=-1),
+            delimiter=",",
+            header=",".join(cols),
+            comments="",
+        )
     elif path.suffix == ".nc":
         da = concat_and_clean(results)
         da.to_netcdf(path)
     else:
-        raise ValueError("Path {} is invalid (doesn't exist or improper extension)".format(path))
+        raise ValueError(
+            "Path {} is invalid (doesn't exist or improper extension)".format(path)
+        )
     return
 
 
-def single_pattern(input_params, shape_limit=0., **kwargs):
+def single_pattern(input_params, shape_limit=0.0, **kwargs):
     """
     Tool for generating a single pattern for exploration.
     The input_params should be fully specified, with optional randomization available in kwargs and shape limit.
@@ -254,27 +290,32 @@ def single_pattern(input_params, shape_limit=0., **kwargs):
     da : DataArray
     """
     parameters = load_params(input_params)
-    _x = np.linspace(parameters['tth_min'], parameters['tth_max'], num=parameters['n_datapoints'])
+    _x = np.linspace(
+        parameters["tth_min"], parameters["tth_max"], num=parameters["n_datapoints"]
+    )
     test_y = np.zeros_like(_x) - 1
 
     if shape_limit:
         while any(test_y < 0):
-            parameters['U'] = np.random.uniform(-shape_limit, shape_limit)
-            parameters['V'] = np.random.uniform(-shape_limit, shape_limit)
-            parameters['W'] = np.random.uniform(-shape_limit, shape_limit)
-            parameters['X'] = np.random.uniform(-shape_limit, shape_limit)
-            parameters['Y'] = np.random.uniform(np.abs(parameters['X']), shape_limit)
-            test_y = parameters['U'] * (np.tan(_x) ** 2) + parameters['V'] * np.tan(_x) + parameters['W']
+            parameters["U"] = np.random.uniform(-shape_limit, shape_limit)
+            parameters["V"] = np.random.uniform(-shape_limit, shape_limit)
+            parameters["W"] = np.random.uniform(-shape_limit, shape_limit)
+            parameters["X"] = np.random.uniform(-shape_limit, shape_limit)
+            parameters["Y"] = np.random.uniform(np.abs(parameters["X"]), shape_limit)
+            test_y = (
+                parameters["U"] * (np.tan(_x) ** 2)
+                + parameters["V"] * np.tan(_x)
+                + parameters["W"]
+            )
 
     for key in kwargs:
         parameters[key] = np.random.uniform(*kwargs[key])
-    if isinstance(parameters['input_cif'], list):
+    if isinstance(parameters["input_cif"], list):
         da = multi_phase_wrapper(parameters)
-    elif isinstance(parameters['wavelength'], list):
+    elif isinstance(parameters["wavelength"], list):
         da = multi_wavelength_wrapper(parameters)
     else:
         da = complete_profile_wrapper(parameters)
 
     metadata_adjustments(da)
     return da
-

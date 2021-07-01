@@ -82,3 +82,20 @@ encouraged) to produce 50,000 patterns per phase using the same parameterization
 
 **ABSTRACT:** The discovery of new structural and functional materials is driven by phase identification, often using X-ray diffraction (XRD). Automation has accelerated the rate of XRD measurements, greatly outpacing XRD analysis techniques that remain manual, time consuming, error prone, and impossible to scale. With the advent of autonomous robotic scientists or self-driving labs, contemporary techniques prohibit the integration of XRD. Here, we describe a computer program for the autonomous characterization of XRD data, driven by artificial intelligence (AI), for the discovery of new materials. Starting from structural databases, we train an ensemble model using a physically accurate synthetic dataset, which output probabilistic classifications --- rather than absolutes --- to overcome the overconfidence in traditional neural networks. This AI agent behaves as a companion to the researcher, improving accuracy and offering unprecedented time savings, and is demonstrated on a diverse set of organic and inorganic materials challenges. This innovation is directly applicable to inverse design approaches, robotic discovery systems, and can be immediately considered for other forms of characterization such as spectroscopy and the pair distribution function.
 
+# Developer Instructions
+The same instructions above in the installation guide apply. However, we prefer to follow 
+[Black formatting](https://black.readthedocs.io/en/stable/) and 
+[Flake8 style checking](https://flake8.pycqa.org/en/latest/). 
+As notebooks and tutorials get added, we will also use [nbstripout](https://pypi.org/project/nbstripout/) to avoid
+committing notebook metadata and figures to the repository.  
+
+The following install script will build the necessary dependencies for the pre-commit hooks.
+For GPU compatibility, it is strongly suggested that you be explicit in your tensorflow versioning. 
+```
+conda create -n xca -c conda-forge cctbx-base tensorflow-gpu=2.XXX 
+conda activate xca
+git clone https://github.com/maffettone/xca
+cd xca
+python -m pip install -e . -r requirements-dev.txt  
+pre-commit install
+``` 
