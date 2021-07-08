@@ -13,14 +13,98 @@ from tensorflow.keras.layers import (
     Conv1D,
     AveragePooling1D,
     Average,
+    Lambda
 )
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import backend as K
+from tensorflow.keras import metrics
 from .tf_data_proc import build_dataset
 from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+def sampling(args):
+    """
+    Samples from the latent distribution
+
+    Parameters
+    ----------
+    args: 
+        z_mean and z_log_sigma layers of VAE
+    """
+    z_mean, z_log_sigma = args
+    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
+                              mean=0., stddev=1)
+    return z_mean + K.exp(z_log_sigma) * epsilon
+
+def build_dense_encoder_model(
+    *, 
+    data_shape, 
+    latent_dim, 
+    activation='relu',
+    dense_dims=[256, 128],
+    **kwargs
+):
+    """
+    Builds dense encoder network for 1-d xrd data
+
+    Parameters
+    ----------
+    data_shape: tuple of int
+        shape of input data XRD pattern (2D array)
+    latent_dim: int
+        number of variables defining the latent distribution
+    activation: string
+        specifies activation function for hidden layers
+    dense_dims: list of int
+        dimensions of hidden layers in encoder model (default is [256, 128])
+    
+    """
+    inputs = Input(shape=data_shape)
+    h_1 = Dense(dense_dims[0], activation=activation, name="enc_dense_1")(inputs)
+    h_2 = Dense(dense_dims[1], activation=activation, name="enc_dense_2")(h_1)
+    z_mean = Dense(latent_dim, name="z_mean_sample")(h_2)
+    z_log_sigma = Dense(latent_dim, name="z_log_var_sample")(h_2)
+    z = Lambda(sampling)([z_mean, z_log_sigma])
+
+    model = Model(inputs, [z_mean, z_log_sigma, z], name="encoder")
+    model.summary()
+    return model
+
+def build_dense_decoder_model(
+    *,
+    data_shape, 
+    latent_dim, 
+    activation="relu",
+    dense_dims=[128, 256],
+    **kwargs
+):
+    """
+    Builds dense decoder network for 1-d xrd data
+
+    Parameters
+    ----------
+    data_shape: tuple of int
+        shape of input data XRD pattern (2D array)
+    latent_dim: int
+        number of variables defining the latent distribution
+    activation: string
+        specifies activation function for hidden layers
+    dense_dim: list of int
+        dimensions of hidden layers in encoder model (default is [256, 128])
+    
+    """
+
+    latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
+    h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
+    h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
+    outputs = Dense(data_shape[1], activation='sigmoid', name='output')(h_2)
+
+    model = Model(latent_inputs, outputs, name='decoder')
+    model.summary()
+    return model
 
 
 def build_CNN_model(
@@ -126,6 +210,25 @@ def build_fusion_ensemble_model(ensemble_size, model_builder, *, data_shape, **k
     outputs = Average()(members)
     model = Model(x_in, outputs)
     return model
+
+class VAE(Model):
+    def __init__(self, encoder, decoder, kl_loss_weight, **kwargs):
+        super(VAE, self).__init__(**kwargs)
+        self.encoder = encoder
+        self.decoder = decoder
+        self.kl_loss_weight = kl_loss_weight
+    
+    def kl_loss(z_mean, z_log_sigma):
+        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
+        kl_loss = K.sum(kl_loss, axis=-1)
+        kl_loss *= -0.5
+        return kl_loss
+
+    def reconstruction_loss(data, reconstruction):
+        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
+        return reconstruction_loss
+
+      
 
 
 def model_training(
