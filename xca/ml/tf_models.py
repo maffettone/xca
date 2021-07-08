@@ -78,7 +78,7 @@ def build_dense_encoder_model(
 
 def build_dense_decoder_model(
     *,
-    data_shape, 
+    original_dim, 
     latent_dim, 
     activation="relu",
     dense_dims=[128, 256],
@@ -90,8 +90,8 @@ def build_dense_decoder_model(
 
     Parameters
     ----------
-    data_shape: tuple of int
-        shape of input data XRD pattern (2D array)
+    original_dim: int
+        original dimensionality of xrd data (i.e. the length of any one sample)
     latent_dim: int
         number of variables defining the latent distribution
     activation: string
@@ -105,7 +105,7 @@ def build_dense_decoder_model(
     latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
     h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
     h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
-    outputs = Dense(data_shape[0], activation='sigmoid', name='output')(h_2)
+    outputs = Dense(original_dim, activation='sigmoid', name='output')(h_2)
 
     model = Model(latent_inputs, outputs, name='decoder')
     if verbose:
