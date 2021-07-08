@@ -71,7 +71,7 @@ def build_dense_decoder_model(
         number of variables defining the latent distribution
     activation: string
         specifies activation function for hidden layers
-    dense_dim: list of int
+    dense_dims: list of int
         dimensions of hidden layers in encoder model (default is [256, 128])
     verbose: bool
         if True, prints out model summary (default is False)
@@ -95,17 +95,17 @@ class VAE(Model):
         self.decoder = decoder
         self.kl_loss_weight = kl_loss_weight
 
-    def kl_loss(z_mean, z_log_sigma):
+    def kl_loss(self, z_mean, z_log_sigma):
         kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
         kl_loss = K.sum(kl_loss, axis=-1)
         kl_loss *= -0.5
         return kl_loss
 
-    def reconstruction_loss(data, reconstruction):
+    def reconstruction_loss(self, data, reconstruction):
         reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
         return reconstruction_loss
 
-    def sample(z_mean, z_log_sigma):
+    def sample(self, z_mean, z_log_sigma):
         epsilon = K.random_normal(
             shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]), mean=0.0, stddev=1
         )
