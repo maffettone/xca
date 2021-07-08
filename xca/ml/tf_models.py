@@ -25,19 +25,17 @@ from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-def sampling(params, latent_dim):
+def sampling(args):
     """
     Samples from the latent distribution
 
     Parameters
     ----------
-    params: 
+    args: 
         list containing z_mean and z_log_sigma layers of VAE
-    latent_dim: int
-        dimension of the latent space
     """
-    z_mean, z_log_sigma = params
-    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
+    z_mean, z_log_sigma = args
+    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]),
                               mean=0., stddev=1)
     return z_mean + K.exp(z_log_sigma) * epsilon
 
@@ -71,7 +69,7 @@ def build_dense_encoder_model(
     h_2 = Dense(dense_dims[1], activation=activation, name="enc_dense_2")(h_1)
     z_mean = Dense(latent_dim, name="z_mean_sample")(h_2)
     z_log_sigma = Dense(latent_dim, name="z_log_var_sample")(h_2)
-    z = Lambda(sampling(latent_dim))([z_mean, z_log_sigma])
+    z = Lambda(sampling)([z_mean, z_log_sigma])
 
     model = Model(inputs, [z_mean, z_log_sigma, z], name="encoder")
     if verbose:
