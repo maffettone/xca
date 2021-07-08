@@ -25,20 +25,6 @@ from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-def sampling(args):
-    """
-    Samples from the latent distribution
-
-    Parameters
-    ----------
-    args: 
-        list containing z_mean and z_log_sigma layers of VAE
-    """
-    z_mean, z_log_sigma = args
-    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]),
-                              mean=0., stddev=1)
-    return z_mean + K.exp(z_log_sigma) * epsilon
-
 def build_dense_encoder_model(
     *, 
     data_shape, 
@@ -69,9 +55,8 @@ def build_dense_encoder_model(
     h_2 = Dense(dense_dims[1], activation=activation, name="enc_dense_2")(h_1)
     z_mean = Dense(latent_dim, name="z_mean_sample")(h_2)
     z_log_sigma = Dense(latent_dim, name="z_log_var_sample")(h_2)
-    z = Lambda(sampling)([z_mean, z_log_sigma])
 
-    model = Model(inputs, [z_mean, z_log_sigma, z], name="encoder")
+    model = Model(inputs, [z_mean, z_log_sigma], name="encoder")
     if verbose:
         model.summary()
     return model
@@ -102,7 +87,7 @@ def build_dense_decoder_model(
         if True, prints out model summary (default is False)
     """
 
-    latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
+    latent_inputs = Input(shape=(latent_dim,), name='z_sample')
     h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
     h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
     outputs = Dense(original_dim, activation='sigmoid', name='output')(h_2)
@@ -233,6 +218,11 @@ class VAE(Model):
     def reconstruction_loss(data, reconstruction):
         reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
         return reconstruction_loss
+
+    def sample(z_mean, z_log_sigma):
+        epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]),
+                              mean=0., stddev=1)
+        return z_mean + K.exp(z_log_sigma) * epsilon
 
       
 
