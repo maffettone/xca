@@ -71,7 +71,7 @@ def build_dense_encoder_model(
     h_2 = Dense(dense_dims[1], activation=activation, name="enc_dense_2")(h_1)
     z_mean = Dense(latent_dim, name="z_mean_sample")(h_2)
     z_log_sigma = Dense(latent_dim, name="z_log_var_sample")(h_2)
-    z = Lambda(sampling)([z_mean, z_log_sigma], latent_dim)
+    z = Lambda(sampling(latent_dim))([z_mean, z_log_sigma])
 
     model = Model(inputs, [z_mean, z_log_sigma, z], name="encoder")
     if verbose:
