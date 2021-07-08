@@ -25,16 +25,18 @@ from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-def sampling(args):
+def sampling(params, latent_dim):
     """
     Samples from the latent distribution
 
     Parameters
     ----------
-    args: 
-        z_mean and z_log_sigma layers of VAE
+    params: 
+        list containing z_mean and z_log_sigma layers of VAE
+    latent_dim: int
+        dimension of the latent space
     """
-    z_mean, z_log_sigma = args
+    z_mean, z_log_sigma = params
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
                               mean=0., stddev=1)
     return z_mean + K.exp(z_log_sigma) * epsilon
@@ -45,6 +47,7 @@ def build_dense_encoder_model(
     latent_dim, 
     activation='relu',
     dense_dims=[256, 128],
+    verbose=False,
     **kwargs
 ):
     """
@@ -60,17 +63,19 @@ def build_dense_encoder_model(
         specifies activation function for hidden layers
     dense_dims: list of int
         dimensions of hidden layers in encoder model (default is [256, 128])
-    
+    verbose: bool
+        if True, prints out model summary (default is False)
     """
     inputs = Input(shape=data_shape)
     h_1 = Dense(dense_dims[0], activation=activation, name="enc_dense_1")(inputs)
     h_2 = Dense(dense_dims[1], activation=activation, name="enc_dense_2")(h_1)
     z_mean = Dense(latent_dim, name="z_mean_sample")(h_2)
     z_log_sigma = Dense(latent_dim, name="z_log_var_sample")(h_2)
-    z = Lambda(sampling)([z_mean, z_log_sigma])
+    z = Lambda(sampling)([z_mean, z_log_sigma], latent_dim)
 
     model = Model(inputs, [z_mean, z_log_sigma, z], name="encoder")
-    model.summary()
+    if verbose:
+        model.summary()
     return model
 
 def build_dense_decoder_model(
@@ -79,6 +84,7 @@ def build_dense_decoder_model(
     latent_dim, 
     activation="relu",
     dense_dims=[128, 256],
+    verbose=False,
     **kwargs
 ):
     """
@@ -94,7 +100,8 @@ def build_dense_decoder_model(
         specifies activation function for hidden layers
     dense_dim: list of int
         dimensions of hidden layers in encoder model (default is [256, 128])
-    
+    verbose: bool
+        if True, prints out model summary (default is False)
     """
 
     latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
@@ -103,7 +110,8 @@ def build_dense_decoder_model(
     outputs = Dense(data_shape[1], activation='sigmoid', name='output')(h_2)
 
     model = Model(latent_inputs, outputs, name='decoder')
-    model.summary()
+    if verbose:
+        model.summary()
     return model
 
 
