@@ -13,7 +13,7 @@ from tensorflow.keras.layers import (
     Conv1D,
     AveragePooling1D,
     Average,
-    Lambda
+    Lambda,
 )
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
@@ -25,14 +25,9 @@ from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
+
 def build_dense_encoder_model(
-    *, 
-    data_shape, 
-    latent_dim, 
-    activation='relu',
-    dense_dims=[256, 128],
-    verbose=False,
-    **kwargs
+    *, data_shape, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
 ):
     """
     Builds dense encoder network for 1-d xrd data
@@ -61,14 +56,9 @@ def build_dense_encoder_model(
         model.summary()
     return model
 
+
 def build_dense_decoder_model(
-    *,
-    original_dim, 
-    latent_dim, 
-    activation="relu",
-    dense_dims=[128, 256],
-    verbose=False,
-    **kwargs
+    *, original_dim, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
 ):
     """
     Builds dense decoder network for 1-d xrd data
@@ -87,15 +77,39 @@ def build_dense_decoder_model(
         if True, prints out model summary (default is False)
     """
 
-    latent_inputs = Input(shape=(latent_dim,), name='z_sample')
-    h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
-    h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
-    outputs = Dense(original_dim, activation='sigmoid', name='output')(h_2)
+    latent_inputs = Input(shape=(latent_dim,), name="z_sample")
+    h_1 = Dense(dense_dims[0], activation=activation, name="dec_dense_1")(latent_inputs)
+    h_2 = Dense(dense_dims[1], activation=activation, name="dec_dense_2")(h_1)
+    outputs = Dense(original_dim, activation="sigmoid", name="output")(h_2)
 
-    model = Model(latent_inputs, outputs, name='decoder')
+    model = Model(latent_inputs, outputs, name="decoder")
     if verbose:
         model.summary()
     return model
+
+
+class VAE(Model):
+    def __init__(self, encoder, decoder, kl_loss_weight, **kwargs):
+        super(VAE, self).__init__(**kwargs)
+        self.encoder = encoder
+        self.decoder = decoder
+        self.kl_loss_weight = kl_loss_weight
+
+    def kl_loss(z_mean, z_log_sigma):
+        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
+        kl_loss = K.sum(kl_loss, axis=-1)
+        kl_loss *= -0.5
+        return kl_loss
+
+    def reconstruction_loss(data, reconstruction):
+        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
+        return reconstruction_loss
+
+    def sample(z_mean, z_log_sigma):
+        epsilon = K.random_normal(
+            shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]), mean=0.0, stddev=1
+        )
+        return z_mean + K.exp(z_log_sigma) * epsilon
 
 
 def build_CNN_model(
@@ -201,30 +215,6 @@ def build_fusion_ensemble_model(ensemble_size, model_builder, *, data_shape, **k
     outputs = Average()(members)
     model = Model(x_in, outputs)
     return model
-
-class VAE(Model):
-    def __init__(self, encoder, decoder, kl_loss_weight, **kwargs):
-        super(VAE, self).__init__(**kwargs)
-        self.encoder = encoder
-        self.decoder = decoder
-        self.kl_loss_weight = kl_loss_weight
-    
-    def kl_loss(z_mean, z_log_sigma):
-        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
-        kl_loss = K.sum(kl_loss, axis=-1)
-        kl_loss *= -0.5
-        return kl_loss
-
-    def reconstruction_loss(data, reconstruction):
-        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
-        return reconstruction_loss
-
-    def sample(z_mean, z_log_sigma):
-        epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]),
-                              mean=0., stddev=1)
-        return z_mean + K.exp(z_log_sigma) * epsilon
-
-      
 
 
 def model_training(
