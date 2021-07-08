@@ -105,7 +105,7 @@ def build_dense_decoder_model(
     latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
     h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
     h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
-    outputs = Dense(data_shape[1], activation='sigmoid', name='output')(h_2)
+    outputs = Dense(data_shape[0], activation='sigmoid', name='output')(h_2)
 
     model = Model(latent_inputs, outputs, name='decoder')
     if verbose:
