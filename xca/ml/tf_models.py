@@ -13,7 +13,7 @@ from tensorflow.keras.layers import (
     Conv1D,
     AveragePooling1D,
     Average,
-    Lambda
+    Lambda,
 )
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
@@ -22,17 +22,18 @@ from tensorflow.keras import backend as K
 from tensorflow.keras import metrics
 from .tf_data_proc import build_dataset
 from pathlib import Path
+from collections import defaultdict
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
+
+def set_seed(seed):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+
 def build_dense_encoder_model(
-    *, 
-    data_shape, 
-    latent_dim, 
-    activation='relu',
-    dense_dims=[256, 128],
-    verbose=False,
-    **kwargs
+    *, data_shape, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
 ):
     """
     Builds dense encoder network for 1-d xrd data
@@ -61,14 +62,9 @@ def build_dense_encoder_model(
         model.summary()
     return model
 
+
 def build_dense_decoder_model(
-    *,
-    original_dim, 
-    latent_dim, 
-    activation="relu",
-    dense_dims=[128, 256],
-    verbose=False,
-    **kwargs
+    *, original_dim, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
 ):
     """
     Builds dense decoder network for 1-d xrd data
@@ -81,21 +77,204 @@ def build_dense_decoder_model(
         number of variables defining the latent distribution
     activation: string
         specifies activation function for hidden layers
-    dense_dim: list of int
+    dense_dims: list of int
         dimensions of hidden layers in encoder model (default is [256, 128])
     verbose: bool
         if True, prints out model summary (default is False)
     """
 
-    latent_inputs = Input(shape=(latent_dim,), name='z_sample')
-    h_1 = Dense(dense_dims[0], activation=activation, name='dec_dense_1')(latent_inputs)
-    h_2 = Dense(dense_dims[1], activation=activation, name='dec_dense_2')(h_1)
-    outputs = Dense(original_dim, activation='sigmoid', name='output')(h_2)
+    latent_inputs = Input(shape=(latent_dim,), name="z_sample")
+    h_1 = Dense(dense_dims[0], activation=activation, name="dec_dense_1")(latent_inputs)
+    h_2 = Dense(dense_dims[1], activation=activation, name="dec_dense_2")(h_1)
+    outputs = Dense(original_dim, activation="sigmoid", name="output")(h_2)
 
-    model = Model(latent_inputs, outputs, name='decoder')
+    model = Model(latent_inputs, outputs, name="decoder")
     if verbose:
         model.summary()
     return model
+
+
+class VAE(Model):
+    def __init__(
+        self, encoder, decoder, kl_loss_weight=1.0, decode_logits=False, **kwargs
+    ):
+        """
+        Complete variational autoencoder
+        Parameters
+        ----------
+        encoder: Model
+        decoder: Model
+        kl_loss_weight: float
+        decode_logits: bool
+            Whether your decoder produces logits or probabilities on [0,1]
+        kwargs: dict
+        """
+        super(VAE, self).__init__(**kwargs)
+        self.encoder = encoder
+        self.decoder = decoder
+        self.decode_logits = decode_logits
+        self.kl_loss_weight = kl_loss_weight
+
+    @staticmethod
+    def kl_loss(z_mean, z_log_sigma):
+        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
+        kl_loss = K.mean(kl_loss, axis=-1)
+        kl_loss *= -0.5
+        return kl_loss
+
+    @staticmethod
+    def reconstruction_loss(data, reconstruction):
+        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
+        return reconstruction_loss
+
+    def loss(self, x, z_mean, z_log_sigma, reconstruction):
+        return self.kl_loss_weight * self.kl_loss(
+            z_mean, z_log_sigma
+        ) + self.reconstruction_loss(x, reconstruction)
+
+    @staticmethod
+    def sample(z_mean, z_log_sigma):
+        epsilon = K.random_normal(
+            shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]), mean=0.0, stddev=1
+        )
+        return z_mean + K.exp(z_log_sigma) * epsilon
+
+    def encode(self, x, *args, **kwargs):
+        mean, log_var = self.encoder(x, *args, **kwargs)
+        return mean, log_var
+
+    def decode(self, z, *args, **kwargs):
+        logits = self.decoder(z, *args, **kwargs)
+        if not self.decode_logits:
+            probs = tf.sigmoid(logits)
+        else:
+            probs = logits
+        return probs
+
+    def __call__(self, x, *args, **kwargs):
+        z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        reconstruction = self.decode(z, *args, **kwargs)
+        return {
+            "z_mean": z_mean,
+            "z_log_sigma": z_log_sigma,
+            "reconstruction": reconstruction,
+        }
+
+
+def VAE_training(
+    model,
+    *,
+    dataset_paths,
+    out_dir,
+    batch_size,
+    lr,
+    multiprocessing,
+    categorical,
+    data_shape,
+    n_epochs,
+    checkpoint_rate=1,
+    verbose=False,
+    seed=None,
+    **kwargs
+):
+    """
+
+    Parameters
+    ----------
+    model: VAE
+    dataset_paths: list
+        List of paths for import using tf_data_proc.
+        Note that even though the VAE does not need labels to train, all datasets require labels.
+        See the build_dataset() docs.
+    out_dir
+    batch_size
+    lr
+    multiprocessing
+    categorical
+    data_shape
+    n_epochs
+    checkpoint_rate
+    verbose
+    seed
+    kwargs
+
+    Returns
+    -------
+
+    """
+    # Setup
+    start_time = time.time()
+    set_seed(seed)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
+    if verbose:
+        model.summary()
+    optimizer = Adam(lr=lr, **kwargs)
+    # Checkpoints
+    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
+    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+
+    # Build dataset
+    dataset, _ = build_dataset(
+        dataset_paths=dataset_paths,
+        batch_size=batch_size,
+        multiprocessing=multiprocessing,
+        categorical=categorical,
+        val_split=0.0,
+        data_shape=data_shape,
+        # Preprocessing step assuming probabilities needed on [0,1] and not on [-1,1]
+        preprocess=lambda data, label: {
+            "X": tf.cast(data, tf.float32),
+            "label": label,
+        },
+    )
+
+    @tf.function
+    def train_step(batch):
+        with tf.GradientTape() as tape:
+            output = model(batch["X"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            loss = reconstruction_loss + model.kl_loss_weight * kl_loss
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return (
+            dict(reconstruction_loss=reconstruction_loss, kl_loss=kl_loss, loss=loss),
+            output,
+        )
+
+    # Actual training
+    results = defaultdict(list)
+    for epoch in range(n_epochs):
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        start = time.time()
+        for batch in dataset:
+            loss, output = train_step(batch)
+            for key in loss:
+                results[key][epoch] += loss[key]
+
+        # Save the model every set epochs
+        if (epoch + 1) % checkpoint_rate == 0:
+            checkpoint.save(file_prefix=checkpoint_prefix)
+        if verbose:
+            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+    if verbose:
+        print()
+        print("Time for full training is {} sec".format(time.time() - start_time))
+
+    for key in results:
+        with open(Path(out_dir) / (key + ".txt"), "w") as f:
+            for result in results[key]:
+                f.write(str(result))
+                f.write("\n")
+
+    return results
 
 
 def build_CNN_model(
@@ -202,30 +381,6 @@ def build_fusion_ensemble_model(ensemble_size, model_builder, *, data_shape, **k
     model = Model(x_in, outputs)
     return model
 
-class VAE(Model):
-    def __init__(self, encoder, decoder, kl_loss_weight, **kwargs):
-        super(VAE, self).__init__(**kwargs)
-        self.encoder = encoder
-        self.decoder = decoder
-        self.kl_loss_weight = kl_loss_weight
-    
-    def kl_loss(z_mean, z_log_sigma):
-        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
-        kl_loss = K.sum(kl_loss, axis=-1)
-        kl_loss *= -0.5
-        return kl_loss
-
-    def reconstruction_loss(data, reconstruction):
-        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
-        return reconstruction_loss
-
-    def sample(z_mean, z_log_sigma):
-        epsilon = K.random_normal(shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]),
-                              mean=0., stddev=1)
-        return z_mean + K.exp(z_log_sigma) * epsilon
-
-      
-
 
 def model_training(
     model,
@@ -278,8 +433,7 @@ def model_training(
 
     """
     start_time = time.time()
-    np.random.seed(seed)
-    tf.random.set_seed(seed)
+    set_seed(seed)
 
     Path(out_dir).mkdir(exist_ok=True, parents=True)
 
