@@ -133,7 +133,8 @@ class VAE(Model):
         ) + self.reconstruction_loss(x, reconstruction)
 
     @staticmethod
-    def sample(z_mean, z_log_sigma):
+    def sample(args):
+        z_mean, z_log_sigma = args
         epsilon = K.random_normal(
             shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]), mean=0.0, stddev=1
         )
@@ -153,7 +154,7 @@ class VAE(Model):
 
     def __call__(self, x, *args, **kwargs):
         z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
-        z = Lambda(self.sample)(z_mean, z_log_sigma, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
         reconstruction = self.decode(z, *args, **kwargs)
         return {
             "z_mean": z_mean,
