@@ -153,7 +153,7 @@ class VAE(Model):
 
     def __call__(self, x, *args, **kwargs):
         z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
-        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        z = Lambda(self.sample)(z_mean, z_log_sigma, *args, **kwargs)
         reconstruction = self.decode(z, *args, **kwargs)
         return {
             "z_mean": z_mean,
