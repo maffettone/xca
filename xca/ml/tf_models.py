@@ -96,8 +96,19 @@ def build_dense_decoder_model(
 
 class VAE(Model):
     def __init__(
-        self, encoder, decoder, kl_loss_weight=1, decode_logits=False, **kwargs
+        self, encoder, decoder, kl_loss_weight=1.0, decode_logits=False, **kwargs
     ):
+        """
+        Complete variational autoencoder
+        Parameters
+        ----------
+        encoder: Model
+        decoder: Model
+        kl_loss_weight: float
+        decode_logits: bool
+            Whether your decoder produces logits or probabilities on [0,1]
+        kwargs: dict
+        """
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
@@ -115,6 +126,11 @@ class VAE(Model):
     def reconstruction_loss(data, reconstruction):
         reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
         return reconstruction_loss
+
+    def loss(self, x, z_mean, z_log_sigma, reconstruction):
+        return self.kl_loss_weight * self.kl_loss(
+            z_mean, z_log_sigma
+        ) + self.reconstruction_loss(x, reconstruction)
 
     @staticmethod
     def sample(z_mean, z_log_sigma):
@@ -135,7 +151,7 @@ class VAE(Model):
             probs = logits
         return probs
 
-    def __call__(self, x):
+    def __call__(self, x, *args, **kwargs):
         z_mean, z_log_sigma = self.encode(x)
         z = self.sample(z_mean, z_log_sigma)
         reconstruction = self.decode(z)
@@ -167,7 +183,10 @@ def VAE_training(
     Parameters
     ----------
     model: VAE
-    dataset_paths
+    dataset_paths: list
+        List of paths for import using tf_data_proc.
+        Note that even though the VAE does not need labels to train, all datasets require labels.
+        See the build_dataset() docs.
     out_dir
     batch_size
     lr
@@ -204,6 +223,11 @@ def VAE_training(
         categorical=categorical,
         val_split=0.0,
         data_shape=data_shape,
+        # Preprocessing step assuming probabilities needed on [0,1] and not on [-1,1]
+        preprocess=lambda data, label: {
+            "X": tf.cast(data, tf.float32),
+            "label": label,
+        },
     )
 
     @tf.function
