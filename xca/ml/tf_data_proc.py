@@ -271,7 +271,7 @@ def build_dataset(
             )
         else:
             dataset = dataset.map(
-                lambda d, l: preprocess(d, l, n_classes),
+                lambda d, l: preprocess(d, l),
                 num_parallel_calls=multiprocessing,
             )
     else:
