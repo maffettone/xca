@@ -26,6 +26,11 @@ from pathlib import Path
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
+def set_seed(seed):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+
 def build_dense_encoder_model(
     *, data_shape, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
 ):
@@ -89,27 +94,55 @@ def build_dense_decoder_model(
 
 
 class VAE(Model):
-    def __init__(self, encoder, decoder, kl_loss_weight, **kwargs):
+    def __init__(
+        self, encoder, decoder, kl_loss_weight=1, decode_logits=False, **kwargs
+    ):
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
+        self.decode_logits = decode_logits
         self.kl_loss_weight = kl_loss_weight
 
-    def kl_loss(self, z_mean, z_log_sigma):
+    @staticmethod
+    def kl_loss(z_mean, z_log_sigma):
         kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
         kl_loss = K.sum(kl_loss, axis=-1)
         kl_loss *= -0.5
         return kl_loss
 
-    def reconstruction_loss(self, data, reconstruction):
+    @staticmethod
+    def reconstruction_loss(data, reconstruction):
         reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
         return reconstruction_loss
 
-    def sample(self, z_mean, z_log_sigma):
+    @staticmethod
+    def sample(z_mean, z_log_sigma):
         epsilon = K.random_normal(
             shape=(K.shape(z_mean)[0], K.shape(z_mean)[1]), mean=0.0, stddev=1
         )
         return z_mean + K.exp(z_log_sigma) * epsilon
+
+    def encode(self, x):
+        mean, log_var = self.encoder(x)
+        return mean, log_var
+
+    def decode(self, z):
+        logits = self.decoder(z)
+        if not self.decode_logits:
+            probs = tf.sigmoid(logits)
+        else:
+            probs = logits
+        return probs
+
+    def __call__(self, x):
+        z_mean, z_log_sigma = self.encode(x)
+        z = self.sample(z_mean, z_log_sigma)
+        reconstruction = self.decode(z)
+        return {
+            "z_mean": z_mean,
+            "z_log_sigma": z_log_sigma,
+            "reconstruction": reconstruction,
+        }
 
 
 def build_CNN_model(
@@ -268,8 +301,7 @@ def model_training(
 
     """
     start_time = time.time()
-    np.random.seed(seed)
-    tf.random.set_seed(seed)
+    set_seed(seed)
 
     Path(out_dir).mkdir(exist_ok=True, parents=True)
 
