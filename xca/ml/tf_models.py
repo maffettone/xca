@@ -22,6 +22,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras import metrics
 from .tf_data_proc import build_dataset
 from pathlib import Path
+from collections import defaultdict
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -106,7 +107,7 @@ class VAE(Model):
     @staticmethod
     def kl_loss(z_mean, z_log_sigma):
         kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
-        kl_loss = K.sum(kl_loss, axis=-1)
+        kl_loss = K.mean(kl_loss, axis=-1)
         kl_loss *= -0.5
         return kl_loss
 
@@ -143,6 +144,113 @@ class VAE(Model):
             "z_log_sigma": z_log_sigma,
             "reconstruction": reconstruction,
         }
+
+
+def VAE_training(
+    model,
+    *,
+    dataset_paths,
+    out_dir,
+    batch_size,
+    lr,
+    multiprocessing,
+    categorical,
+    data_shape,
+    n_epochs,
+    checkpoint_rate=1,
+    verbose=False,
+    seed=None,
+    **kwargs
+):
+    """
+
+    Parameters
+    ----------
+    model: VAE
+    dataset_paths
+    out_dir
+    batch_size
+    lr
+    multiprocessing
+    categorical
+    data_shape
+    n_epochs
+    checkpoint_rate
+    verbose
+    seed
+    kwargs
+
+    Returns
+    -------
+
+    """
+    # Setup
+    start_time = time.time()
+    set_seed(seed)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
+    if verbose:
+        model.summary()
+    optimizer = Adam(lr=lr, **kwargs)
+    # Checkpoints
+    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
+    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+
+    # Build dataset
+    dataset, _ = build_dataset(
+        dataset_paths=dataset_paths,
+        batch_size=batch_size,
+        multiprocessing=multiprocessing,
+        categorical=categorical,
+        val_split=0.0,
+        data_shape=data_shape,
+    )
+
+    @tf.function
+    def train_step(batch):
+        with tf.GradientTape() as tape:
+            output = model(batch["X"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            loss = reconstruction_loss + model.kl_loss_weight * kl_loss
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return (
+            dict(reconstruction_loss=reconstruction_loss, kl_loss=kl_loss, loss=loss),
+            output,
+        )
+
+    # Actual training
+    results = defaultdict(list)
+    for epoch in range(n_epochs):
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        start = time.time()
+        for batch in dataset:
+            loss, output = train_step(batch)
+            for key in loss:
+                results[key][epoch] += loss[key]
+
+        # Save the model every set epochs
+        if (epoch + 1) % checkpoint_rate == 0:
+            checkpoint.save(file_prefix=checkpoint_prefix)
+        if verbose:
+            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+    if verbose:
+        print()
+        print("Time for full training is {} sec".format(time.time() - start_time))
+
+    for key in results:
+        with open(Path(out_dir) / (key + ".txt"), "w") as f:
+            for result in results[key]:
+                f.write(str(result))
+                f.write("\n")
+
+    return results
 
 
 def build_CNN_model(
