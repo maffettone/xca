@@ -139,12 +139,12 @@ class VAE(Model):
         )
         return z_mean + K.exp(z_log_sigma) * epsilon
 
-    def encode(self, x):
-        mean, log_var = self.encoder(x)
+    def encode(self, x, *args, **kwargs):
+        mean, log_var = self.encoder(x, *args, **kwargs)
         return mean, log_var
 
-    def decode(self, z):
-        logits = self.decoder(z)
+    def decode(self, z, *args, **kwargs):
+        logits = self.decoder(z, *args, **kwargs)
         if not self.decode_logits:
             probs = tf.sigmoid(logits)
         else:
@@ -152,9 +152,9 @@ class VAE(Model):
         return probs
 
     def __call__(self, x, *args, **kwargs):
-        z_mean, z_log_sigma = self.encode(x)
-        z = self.sample(z_mean, z_log_sigma)
-        reconstruction = self.decode(z)
+        z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        reconstruction = self.decode(z, *args, **kwargs)
         return {
             "z_mean": z_mean,
             "z_log_sigma": z_log_sigma,
