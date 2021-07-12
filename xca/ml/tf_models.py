@@ -125,8 +125,7 @@ def build_CNN_decoder_model(
     latent_dim: int
         number of variables defining the latent space
     last_conv_layer_shape: tuple of int
-        shape of the output from the last convolutional layer in the encoder. 
-        used to calculate dimensionality of the decoder's initial dense layer
+        shape of the output from the last convolutional layer in the encoder; used to calculate dimensionality of the decoder's initial dense layer
     filters: list of int
         consistent length with other items, number of filters for each Conv1DTranspose layer
     kernel_sizes: list of int
@@ -138,15 +137,13 @@ def build_CNN_decoder_model(
     paddings: list of str
         consistent length with other items, type of padding for each Conv1DTranspose layer
         see tensorflow/keras documentation for valid entries
-    dense_dropout: float   
-        percentage of dropout for final layer
     verbose: bool
         if True, prints out model summary (default is False)
     """
 
     latent_inputs = Input(shape=(latent_dim,))
-    x = Dense(last_conv_layer_shape[0] * last_conv_layer_shape[1], activation="relu")(latent_inputs)
-    x = Reshape((last_conv_layer_shape[0], last_conv_layer_shape[1]))(x)
+    x = Dense(last_conv_layer_shape[1] * last_conv_layer_shape[2], activation="relu")(latent_inputs)
+    x = Reshape((last_conv_layer_shape[1], last_conv_layer_shape[2]))(x)
 
     # Upsampling
     for i in range(len(filters)):
