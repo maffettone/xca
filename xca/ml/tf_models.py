@@ -8,9 +8,11 @@ from tensorflow.keras.layers import (
     Dense,
     Dropout,
     Flatten,
+    Reshape,
     Input,
     LeakyReLU,
     Conv1D,
+    Conv1DTranspose,
     AveragePooling1D,
     Average,
     Lambda,
@@ -31,6 +33,140 @@ def set_seed(seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
+def build_CNN_encoder_model(
+    *, 
+    data_shape, 
+    latent_dim,
+    dense_dims,
+    filters, 
+    kernel_sizes, 
+    strides,
+    pool_sizes,
+    paddings,
+    dense_dropout=0.0,
+    verbose=False,
+    **kwargs
+):
+    """
+    Builds Convolutional encoder network for downsampling of 1-d xrd data
+
+    Parameters
+    ----------
+    data_shape: tuple of int
+        shape of input XRD pattern
+    latent_dim: int
+        number of variables defining the latent space
+    dense_dims: list of int
+        dimensions of dense layers in encoder model
+    filters: list of int
+        consistent length with other items, number of filters for each Conv1D layer
+    kernel_sizes: list of int
+        consistent length with other items, size of kernel for each Conv1D layer
+    strides: list of int
+        consistent length with other items, size of stride for each Conv1D layer
+    pool_sizes: list of int
+        consistent length with other items, size of pooling kernel for each Conv1D layer
+    paddings: list of str
+        consistent length with other items, type of padding for each Conv1D layer
+        see tensorflow/keras documentation for valid entries
+    dense_dropout: float   
+        percentage of dropout for final layer
+    verbose: bool
+        if True, prints out model summary (default is False)
+    """
+
+    encoder_inputs = Input(shape=data_shape, name="X")
+    x = encoder_inputs
+    # Downsampling
+    for i in range(len(filters)):
+        x = Conv1D(
+            filters[i],
+            kernel_sizes[i],
+            strides=strides[i],
+            padding=paddings[i],
+            name="conv_{}".format(i),
+        )(x)
+        x = AveragePooling1D(pool_size=pool_sizes[i], strides=None, padding="same")(x)
+
+    last_conv_layer_shape = x.shape
+    # Flatten and output
+    x = Flatten()(x)
+    x = Dropout(dense_dropout)(x)
+    for i, dim in enumerate(dense_dims):
+        x = Dense(dim, activation="relu", name="dense_{}".format(i))(x)
+    z_mean = Dense(latent_dim, name="z_mean")(x)
+    z_log_sigma = Dense(latent_dim, name="z_log_sig")(x)
+
+    # Create model and display summary if verbose
+    model = Model(encoder_inputs, [z_mean, z_log_sigma], name="CNN_encoder")
+    if verbose:
+        model.summary()
+    return model, last_conv_layer_shape
+
+def build_CNN_decoder_model(
+    *,
+    data_shape, 
+    latent_dim, 
+    last_conv_layer_shape,
+    filters, 
+    kernel_sizes, 
+    strides, 
+    paddings, 
+    verbose, 
+    **kwargs
+):
+    """
+    Builds Convolutional decoder network for upsampling of 1-d xrd data
+
+    Parameters
+    ----------
+    data_shape: tuple of int
+        shape of input XRD pattern
+    latent_dim: int
+        number of variables defining the latent space
+    last_conv_layer_shape: tuple of int
+        shape of the output from the last convolutional layer in the encoder. 
+        used to calculate dimensionality of the decoder's initial dense layer
+    filters: list of int
+        consistent length with other items, number of filters for each Conv1DTranspose layer
+    kernel_sizes: list of int
+        consistent length with other items, size of kernel for each Conv1DTranspose layer
+    strides: list of int
+        consistent length with other items, size of stride for each Conv1DTranspose layer
+    pool_sizes: list of int
+        consistent length with other items, size of pooling kernel for each Conv1DTranspose layer
+    paddings: list of str
+        consistent length with other items, type of padding for each Conv1DTranspose layer
+        see tensorflow/keras documentation for valid entries
+    dense_dropout: float   
+        percentage of dropout for final layer
+    verbose: bool
+        if True, prints out model summary (default is False)
+    """
+
+    latent_inputs = Input(shape=(latent_dim,))
+    x = Dense(last_conv_layer_shape[0] * last_conv_layer_shape[1], activation="relu")(latent_inputs)
+    x = Reshape((last_conv_layer_shape[0], last_conv_layer_shape[1]))(x)
+
+    # Upsampling
+    for i in range(len(filters)):
+        x = Conv1DTranspose(
+            filters[i],
+            kernel_sizes[i],
+            strides=strides[i],
+            padding=paddings[i],
+            name="conv_transpose{}".format(i),
+        )(x)
+
+    # Decoder output
+    decoder_outputs = Conv1DTranspose(1, 3, activation="sigmoid", padding="same")(x)
+    decoder = Model(latent_inputs, decoder_outputs, name="CNN_decoder")
+    
+    if verbose:
+        decoder.summary()
+
+    return decoder
+
 
 def build_dense_encoder_model(
     *, data_shape, latent_dim, dense_dims, activation="relu", verbose=False, **kwargs
@@ -43,7 +179,7 @@ def build_dense_encoder_model(
     data_shape: tuple of int
         shape of input data XRD pattern (2D array)
     latent_dim: int
-        number of variables defining the latent distribution
+        number of variables defining the latent space
     activation: string
         specifies activation function for hidden layers
     dense_dims: list of int
