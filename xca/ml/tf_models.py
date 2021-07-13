@@ -250,14 +250,25 @@ class VAE(Model):
 
     @staticmethod
     def kl_loss(z_mean, z_log_sigma):
+        """
         kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
         kl_loss = K.mean(kl_loss, axis=-1)
         kl_loss *= -0.5
+        """
+        kl_loss = -0.5 * (1 + z_log_sigma - tf.square(z_mean) - tf.exp(z_log_sigma))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
         return kl_loss
 
     @staticmethod
     def reconstruction_loss(data, reconstruction):
+        """
         reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
+        """
+        reconstruction_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    keras.losses.binary_crossentropy(data, reconstruction), axis=1
+                )
+        )
         return reconstruction_loss
 
     def loss(self, x, z_mean, z_log_sigma, reconstruction):
