@@ -33,13 +33,14 @@ def set_seed(seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
+
 def build_CNN_encoder_model(
-    *, 
-    data_shape, 
+    *,
+    data_shape,
     latent_dim,
     dense_dims,
-    filters, 
-    kernel_sizes, 
+    filters,
+    kernel_sizes,
     strides,
     pool_sizes,
     paddings,
@@ -69,7 +70,7 @@ def build_CNN_encoder_model(
     paddings: list of str
         consistent length with other items, type of padding for each Conv1D layer
         see tensorflow/keras documentation for valid entries
-    dense_dropout: float   
+    dense_dropout: float
         percentage of dropout for final layer
     verbose: bool
         if True, prints out model summary (default is False)
@@ -103,16 +104,17 @@ def build_CNN_encoder_model(
         model.summary()
     return model, last_conv_layer_shape
 
+
 def build_CNN_decoder_model(
     *,
-    data_shape, 
-    latent_dim, 
+    data_shape,
+    latent_dim,
     last_conv_layer_shape,
-    filters, 
-    kernel_sizes, 
-    strides, 
-    paddings, 
-    verbose, 
+    filters,
+    kernel_sizes,
+    strides,
+    paddings,
+    verbose,
     **kwargs
 ):
     """
@@ -142,7 +144,9 @@ def build_CNN_decoder_model(
     """
 
     latent_inputs = Input(shape=(latent_dim,))
-    x = Dense(last_conv_layer_shape[1] * last_conv_layer_shape[2], activation="relu")(latent_inputs)
+    x = Dense(last_conv_layer_shape[1] * last_conv_layer_shape[2], activation="relu")(
+        latent_inputs
+    )
     x = Reshape((last_conv_layer_shape[1], last_conv_layer_shape[2]))(x)
 
     # Upsampling
@@ -156,9 +160,11 @@ def build_CNN_decoder_model(
         )(x)
 
     # Decoder output
-    decoder_outputs = Conv1DTranspose(1, 3, activation="sigmoid", padding="same")(x)
+    decoder_outputs = Conv1DTranspose(1, 3, padding="same")(
+        x
+    )  # TODO: This is superfluous and should be wrapped into the loop
     decoder = Model(latent_inputs, decoder_outputs, name="CNN_decoder")
-    
+
     if verbose:
         decoder.summary()
 
@@ -219,7 +225,7 @@ def build_dense_decoder_model(
     latent_inputs = Input(shape=(latent_dim,), name="z_sample")
     h_1 = Dense(dense_dims[0], activation=activation, name="dec_dense_1")(latent_inputs)
     h_2 = Dense(dense_dims[1], activation=activation, name="dec_dense_2")(h_1)
-    outputs = Dense(original_dim, activation="sigmoid", name="output")(h_2)
+    outputs = Dense(original_dim, name="output")(h_2)
 
     model = Model(latent_inputs, outputs, name="decoder")
     if verbose:
@@ -228,9 +234,7 @@ def build_dense_decoder_model(
 
 
 class VAE(Model):
-    def __init__(
-        self, encoder, decoder, kl_loss_weight=1.0, decode_logits=False, **kwargs
-    ):
+    def __init__(self, encoder, decoder, kl_loss_weight=1.0, **kwargs):
         """
         Complete variational autoencoder
         Parameters
@@ -238,36 +242,30 @@ class VAE(Model):
         encoder: Model
         decoder: Model
         kl_loss_weight: float
-        decode_logits: bool
-            Whether your decoder produces logits or probabilities on [0,1]
         kwargs: dict
         """
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
-        self.decode_logits = decode_logits
         self.kl_loss_weight = kl_loss_weight
 
     @staticmethod
     def kl_loss(z_mean, z_log_sigma):
-        """
-        kl_loss = 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma)
-        kl_loss = K.mean(kl_loss, axis=-1)
+        """Computes the KL-divergence loss with a batchwise sum as a reduction"""
+        kl_loss = 1 + z_log_sigma - tf.square(z_mean) - tf.exp(z_log_sigma)
+        kl_loss = tf.reduce_sum(kl_loss, axis=-1)
         kl_loss *= -0.5
-        """
-        kl_loss = -0.5 * (1 + z_log_sigma - tf.square(z_mean) - tf.exp(z_log_sigma))
-        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        kl_loss = tf.reduce_sum(kl_loss, axis=0)
         return kl_loss
 
     @staticmethod
     def reconstruction_loss(data, reconstruction):
-        """
-        reconstruction_loss = tf.keras.losses.binary_crossentropy(data, reconstruction)
-        """
-        reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    tf.keras.losses.binary_crossentropy(data, reconstruction), axis=1
-                )
+        """Computes the Mean squared error loss with a batchwise sum as a reduction"""
+        reconstruction_loss = tf.reduce_sum(
+            tf.keras.losses.mean_squared_error(
+                tf.squeeze(data), tf.squeeze(reconstruction)
+            ),
+            axis=0,
         )
         return reconstruction_loss
 
@@ -290,11 +288,7 @@ class VAE(Model):
 
     def decode(self, z, *args, **kwargs):
         logits = self.decoder(z, *args, **kwargs)
-        if not self.decode_logits:
-            probs = tf.sigmoid(logits)
-        else:
-            probs = logits
-        return probs
+        return logits
 
     def __call__(self, x, *args, **kwargs):
         z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
@@ -368,7 +362,6 @@ def VAE_training(
         categorical=categorical,
         val_split=0.0,
         data_shape=data_shape,
-        # Preprocessing step assuming probabilities needed on [0,1] and not on [-1,1]
         preprocess=lambda data, label: {
             "X": tf.cast(data, tf.float32),
             "label": label,
@@ -382,8 +375,6 @@ def VAE_training(
             reconstruction_loss = model.reconstruction_loss(
                 batch["X"], output["reconstruction"]
             )
-            print(batch["X"].shape)
-            print(output["reconstruction"].shape)
             kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
             loss = reconstruction_loss + model.kl_loss_weight * kl_loss
         gradients = tape.gradient(loss, model.trainable_variables)
