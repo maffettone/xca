@@ -371,7 +371,9 @@ def VAE_training(
             reconstruction_loss = model.reconstruction_loss(
                 batch["X"], output["reconstruction"]
             )
+            print(reconstruction_loss.shape)
             kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            print(kl_loss.shape)
             loss = reconstruction_loss + model.kl_loss_weight * kl_loss
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
