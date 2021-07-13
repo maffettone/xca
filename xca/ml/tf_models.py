@@ -266,7 +266,7 @@ class VAE(Model):
         """
         reconstruction_loss = tf.reduce_mean(
                 tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction), axis=1
+                    tf.keras.losses.binary_crossentropy(data, reconstruction), axis=1
                 )
         )
         return reconstruction_loss
