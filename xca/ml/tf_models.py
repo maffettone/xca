@@ -74,6 +74,12 @@ def build_CNN_encoder_model(
         percentage of dropout for final layer
     verbose: bool
         if True, prints out model summary (default is False)
+
+    Returns
+    -------
+    model: Model
+    last_conv_layer_shape: tuple
+        Final shape prior to dense layers. Retained for building effective decoder.
     """
 
     encoder_inputs = Input(shape=data_shape, name="X")
@@ -107,7 +113,6 @@ def build_CNN_encoder_model(
 
 def build_CNN_decoder_model(
     *,
-    data_shape,
     latent_dim,
     last_conv_layer_shape,
     filters,
@@ -122,8 +127,6 @@ def build_CNN_decoder_model(
 
     Parameters
     ----------
-    data_shape: tuple of int
-        shape of input XRD pattern
     latent_dim: int
         number of variables defining the latent space
     last_conv_layer_shape: tuple of int
@@ -140,7 +143,11 @@ def build_CNN_decoder_model(
         consistent length with other items, type of padding for each Conv1DTranspose layer
         see tensorflow/keras documentation for valid entries
     verbose: bool
-        if True, prints out model summary (default is False)
+        if True, prints out model summary (default is False).
+
+    Returns
+    -------
+    model: Model
     """
 
     latent_inputs = Input(shape=(latent_dim,))
@@ -160,10 +167,7 @@ def build_CNN_decoder_model(
         )(x)
 
     # Decoder output
-    decoder_outputs = Conv1DTranspose(1, 3, padding="same")(
-        x
-    )  # TODO: This is superfluous and should be wrapped into the loop
-    decoder = Model(latent_inputs, decoder_outputs, name="CNN_decoder")
+    decoder = Model(latent_inputs, x, name="CNN_decoder")
 
     if verbose:
         decoder.summary()
