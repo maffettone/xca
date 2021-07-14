@@ -593,7 +593,10 @@ def model_training(
         n_classes=n_classes,
     )
 
-    cross_entropy = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+    if categorical:
+        loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
+    else:
+        loss_fn = tf.keras.losses.MeanSquaredError()
 
     optimizer = Adam(lr=lr, beta_1=beta_1, beta_2=beta_2)
 
@@ -606,7 +609,7 @@ def model_training(
     def train_step(batch):
         with tf.GradientTape() as tape:
             y_pred = model({"X": batch["X"]}, training=True)
-            loss = cross_entropy(batch["label"], y_pred)
+            loss = loss_fn(batch["label"], y_pred)
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss, y_pred
@@ -614,26 +617,45 @@ def model_training(
     @tf.function
     def val_step(batch):
         y_pred = model({"X": batch["X"]}, training=False)
-        return y_pred
+        loss = loss_fn(batch["label"], y_pred)
+        return loss, y_pred
 
     # Actual training
-    results = {"loss": [], "train_acc": [], "val_acc": []}
+    results = defaultdict(list)
     for epoch in range(n_epochs):
-        train_accuracy = tf.keras.metrics.CategoricalAccuracy()
-        val_accuracy = tf.keras.metrics.CategoricalAccuracy()
-        results["loss"].append(0.0)
+        if categorical:
+            train_metrics = {"train_acc": tf.keras.metrics.CategoricalAccuracy()}
+            val_metrics = {"val_acc": tf.keras.metrics.CategoricalAccuracy()}
+        else:
+            train_metrics = {"train_loss": tf.keras.metrics.MeanSquaredError()}
+            val_metrics = {"val_loss": tf.keras.metrics.MeanSquaredError()}
+
         start = time.time()
+        results["train_loss"].append(0.0)
+        count = 0
         for batch in dataset:
+            count += len(batch)
             loss, y_pred = train_step(batch)
-            results["loss"][epoch] += loss
-            train_accuracy(batch["label"], y_pred)
+            results["train_loss"][epoch] += loss.numpy()
+            for _, metric in train_metrics.items():
+                metric(batch["label"], y_pred)
+        results["train_loss"][epoch] /= count
 
         # Validation and results update
+        results["val_loss"].append(0.0)
+        count = 0
         for batch in val_dataset:
-            val_pred = val_step(batch)
-            val_accuracy(batch["label"], val_pred)
-        results["train_acc"].append(train_accuracy.result().numpy())
-        results["val_acc"].append(val_accuracy.result().numpy())
+            count += len(batch)
+            loss, val_pred = val_step(batch)
+            results["val_loss"][epoch] += loss.numpy()
+            for _, metric in val_metrics.items():
+                metric(batch["label"], val_pred)
+        results["val_loss"][epoch] /= count
+
+        for key, metric in train_metrics.items():
+            results[key].append(metric.result().numpy())
+        for key, metric in val_metrics.items():
+            results[key].append(metric.result().numpy())
 
         # Save the model every set epochs
         if (epoch + 1) % checkpoint_rate == 0:
