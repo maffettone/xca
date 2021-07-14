@@ -36,7 +36,7 @@ def set_seed(seed):
 
 
 def calculate_transpose_output_size(input_size, kernel_size, stride):
-    return math.ceil(input_size - kernel_size + 1) / stride
+    return (input_size - 1) * stride + kernel_size
 
 
 def build_consistent_vae(
@@ -96,16 +96,17 @@ def build_consistent_vae(
     )
 
     # Build stride vector such that output dimensionality matches data_shape
-    decoder_filters = encoder_filters[::-1] + [1]
-    decoder_kernel_sizes = encoder_kernel_sizes[::-1]
-    decoder_strides = encoder_strides[::-1] + [1]
+    shrink_factors = encoder_strides + encoder_pool_sizes
+    decoder_strides = shrink_factors + [1]
+    decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
+    decoder_kernel_sizes = [5] * (len(decoder_strides) - 1)
 
     current_size = last_conv_layer_shape[1]
     for i in range(len(decoder_kernel_sizes)):
         current_size = calculate_transpose_output_size(
             current_size, decoder_kernel_sizes[i], decoder_strides[i]
         )
-    last_kernel_size = data_shape[0] - current_size - 1
+    last_kernel_size = data_shape[0] - current_size + 1
     decoder_kernel_sizes.append(int(last_kernel_size))
 
     # With stride size configured, build the decoder
