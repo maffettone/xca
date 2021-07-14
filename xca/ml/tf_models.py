@@ -97,6 +97,7 @@ def build_consistent_vae(
 
     # Build stride vector such that output dimensionality matches data_shape
     shrink_factors = encoder_strides + encoder_pool_sizes
+    shrink_factors = [f for f in shrink_factors if f > 1]
     decoder_strides = shrink_factors + [1]
     decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
     decoder_kernel_sizes = [min(encoder_kernel_sizes)] * (len(decoder_strides) - 1)
