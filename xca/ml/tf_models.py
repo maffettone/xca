@@ -99,7 +99,7 @@ def build_consistent_vae(
     shrink_factors = encoder_strides + encoder_pool_sizes
     decoder_strides = shrink_factors + [1]
     decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
-    decoder_kernel_sizes = [5] * (len(decoder_strides) - 1)
+    decoder_kernel_sizes = [min(encoder_kernel_sizes)] * (len(decoder_strides) - 1)
 
     current_size = last_conv_layer_shape[1]
     for i in range(len(decoder_kernel_sizes)):
