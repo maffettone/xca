@@ -3,6 +3,7 @@ import numpy as np
 import time
 import os
 import tensorflow as tf
+import math
 from tensorflow.keras.layers import (
     BatchNormalization,
     Dense,
@@ -32,6 +33,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 def set_seed(seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
+
+
+def calculate_transpose_output_size(input_size, kernel_size, stride):
+    return math.ceil(input_size - kernel_size + 1) / stride
 
 
 def build_consistent_vae(
@@ -86,15 +91,22 @@ def build_consistent_vae(
         kernel_sizes=encoder_kernel_sizes,
         strides=encoder_strides,
         pool_sizes=encoder_pool_sizes,
-        paddings=["same"] * len(encoder_filters),
+        paddings=["valid"] * len(encoder_filters),
         verbose=verbose,
     )
 
     # Build stride vector such that output dimensionality matches data_shape
-    shrink_factors = encoder_strides + encoder_pool_sizes
-    decoder_strides = shrink_factors + [1]
-    decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
-    decoder_kernel_sizes = [5] * (len(decoder_strides) - 1) + [1]
+    decoder_filters = encoder_filters[::-1] + [1]
+    decoder_kernel_sizes = encoder_kernel_sizes[::-1]
+    decoder_strides = encoder_strides[::-1] + [1]
+
+    current_size = last_conv_layer_shape[0]
+    for i in range(len(decoder_kernel_sizes)):
+        current_size = calculate_transpose_output_size(
+            current_size, decoder_kernel_sizes[i], decoder_strides[i]
+        )
+    last_kernel_size = data_shape[0] - current_size - 1
+    decoder_kernel_sizes.append(last_kernel_size)
 
     # With stride size configured, build the decoder
     decoder = build_CNN_decoder_model(
@@ -103,7 +115,7 @@ def build_consistent_vae(
         filters=decoder_filters,
         kernel_sizes=decoder_kernel_sizes,
         strides=decoder_strides,
-        paddings=["same"] * len(decoder_strides),
+        paddings=["valid"] * len(decoder_strides),
         verbose=verbose,
     )
 
