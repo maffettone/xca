@@ -34,6 +34,84 @@ def set_seed(seed):
     tf.random.set_seed(seed)
 
 
+def build_consistent_vae(
+    *,
+    data_shape,
+    latent_dim,
+    encoder_dense_dims,
+    encoder_filters,
+    encoder_kernel_sizes,
+    encoder_pool_sizes,
+    encoder_strides,
+    verbose=False,
+    **kwargs
+):
+
+    """
+    Builds Convolutional VAE network that has consistent shapes across layers and encoder/decoder models.
+
+    ** Note: Padding is assumed to be 'same' for all convolutional layers **
+
+    Parameters
+    ----------
+    data_shape: tuple of int
+        shape of input data
+    latent_dim: int
+        number of variables defining the latent space
+    encoder_dense_dims: list of int
+        numbers of neurons in each of the encoder's dense, fully connected layers
+    encoder_filters: list of int
+        number of filters in each convolutional layer of the encoder model. consistent with length of encoder_kernel_sizes, encoder_pool_sizes, encoder_strides, and encoder_paddings
+    encoder_kernel_sizes: list of int
+        kernel sizes for each convolutional layer of the encoder model. consistent with length of other input lists
+    encoder_strides: list of int
+        number of strides in each convolutional layer of the encoder model. consistent with length of other input lists
+    encoder_pool_sizes: list of int
+        pool sizes for each convolutional layer of the encoder model. consistent with length of other input lists
+    verbose: bool
+        if True, displays model summaries for the encoder and decoder
+
+
+    Returns
+    -------
+    tf.keras.Model (VAE model)
+    """
+
+    # Build the encoder as specified by the user
+    encoder, last_conv_layer_shape = build_CNN_encoder_model(
+        data_shape=data_shape,
+        latent_dim=latent_dim,
+        dense_dims=encoder_dense_dims,
+        filters=encoder_filters,
+        kernel_sizes=encoder_kernel_sizes,
+        strides=encoder_strides,
+        pool_sizes=encoder_pool_sizes,
+        paddings=["same"] * len(encoder_filters),
+        verbose=verbose,
+    )
+
+    # Build stride vector such that output dimensionality matches data_shape
+    shrink_factors = encoder_strides + encoder_pool_sizes
+    decoder_strides = shrink_factors + [1]
+    decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
+    decoder_kernel_sizes = [5] * (len(decoder_strides) - 1) + [1]
+
+    # With stride size configured, build the decoder
+    decoder = build_CNN_decoder_model(
+        latent_dim=latent_dim,
+        last_conv_layer_shape=last_conv_layer_shape,
+        filters=decoder_filters,
+        kernel_sizes=decoder_kernel_sizes,
+        strides=decoder_strides,
+        paddings=["same"] * len(decoder_strides),
+        verbose=verbose,
+    )
+
+    kl_loss_factor = 1 / 2048
+    vae = VAE(encoder, decoder, kl_loss_factor)
+    return vae
+
+
 def build_CNN_encoder_model(
     *,
     data_shape,
