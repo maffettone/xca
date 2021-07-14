@@ -106,7 +106,7 @@ def build_consistent_vae(
             current_size, decoder_kernel_sizes[i], decoder_strides[i]
         )
     last_kernel_size = data_shape[0] - current_size - 1
-    decoder_kernel_sizes.append(last_kernel_size)
+    decoder_kernel_sizes.append(int(last_kernel_size))
 
     # With stride size configured, build the decoder
     decoder = build_CNN_decoder_model(
