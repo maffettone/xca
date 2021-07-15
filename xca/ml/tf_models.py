@@ -127,10 +127,8 @@ def build_consistent_vae(
         )
 
     # produce the final output layer such that the output size equals the encoder input size
-    last_layer_padding = data_shape[0] - x_shape
-    x = Conv1DTranspose(
-        1, 1, strides=1, padding="valid", output_padding=last_layer_padding
-    )(x)
+    last_kernel_size = data_shape[0] - x_shape + 1
+    x = Conv1DTranspose(1, last_kernel_size, strides=1, padding="valid")(x)
 
     # Decoder output
     decoder = Model(latent_inputs, x, name="CNN_decoder")
