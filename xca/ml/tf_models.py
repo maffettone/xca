@@ -129,6 +129,11 @@ def build_consistent_vae(
 
     # produce the final output layer such that the output size equals the encoder input size
     last_kernel_size = data_shape[0] - x_shape + 1
+    if last_kernel_size < 0:
+        pool_size = -last_kernel_size
+        x = AveragePooling1D(pool_size=pool_size, strides=None, padding="valid")
+        last_kernel_size = 1
+
     x = Conv1DTranspose(1, last_kernel_size, strides=1, padding="valid")(x)
 
     # Decoder output
