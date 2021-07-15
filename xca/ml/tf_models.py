@@ -14,6 +14,7 @@ from tensorflow.keras.layers import (
     LeakyReLU,
     Conv1D,
     Conv1DTranspose,
+    UpSampling1D,
     AveragePooling1D,
     Average,
     Lambda,
@@ -48,14 +49,15 @@ def build_consistent_vae(
     encoder_kernel_sizes,
     encoder_pool_sizes,
     encoder_strides,
+    kl_loss_factor,
     verbose=False,
     **kwargs
 ):
 
     """
-    Builds Convolutional VAE network that has consistent shapes across layers and encoder/decoder models.
+    Given a set of encoder hyperparameters, this builds a decoder which produces output of the correct shape and returns a consistent vae model.
 
-    ** Note: Padding is assumed to be 'same' for all convolutional layers **
+    ** Note: Padding is assumed to be 'valid' for all convolutional layers **
 
     Parameters
     ----------
@@ -73,6 +75,8 @@ def build_consistent_vae(
         number of strides in each convolutional layer of the encoder model. consistent with length of other input lists
     encoder_pool_sizes: list of int
         pool sizes for each convolutional layer of the encoder model. consistent with length of other input lists
+    kl_loss_factor: float
+        scaler for kl-divergence loss
     verbose: bool
         if True, displays model summaries for the encoder and decoder
 
@@ -95,35 +99,45 @@ def build_consistent_vae(
         verbose=verbose,
     )
 
-    # Build stride vector such that output dimensionality matches data_shape
-    shrink_factors = encoder_strides + encoder_pool_sizes
-    shrink_factors = [f for f in shrink_factors if f > 1]
-    decoder_strides = shrink_factors + [1]
-    decoder_filters = [8] * (len(decoder_strides) - 1) + [1]
-    decoder_kernel_sizes = [min(encoder_kernel_sizes)] * (len(decoder_strides) - 1)
-
-    current_size = last_conv_layer_shape[1]
-    for i in range(len(decoder_kernel_sizes)):
-        current_size = calculate_transpose_output_size(
-            current_size, decoder_kernel_sizes[i], decoder_strides[i]
-        )
-    last_kernel_size = data_shape[0] - current_size + 1
-    if last_kernel_size == 0:
-        last_kernel_size = 1
-    decoder_kernel_sizes.append(int(last_kernel_size))
+    decoder_filters = encoder_filters[::-1]
+    decoder_kernel_sizes = encoder_kernel_sizes[::-1]
+    decoder_strides = encoder_strides[::-1]
+    upsampling_sizes = encoder_pool_sizes[::-1]
 
     # With stride size configured, build the decoder
-    decoder = build_CNN_decoder_model(
-        latent_dim=latent_dim,
-        last_conv_layer_shape=last_conv_layer_shape,
-        filters=decoder_filters,
-        kernel_sizes=decoder_kernel_sizes,
-        strides=decoder_strides,
-        paddings=["valid"] * len(decoder_strides),
-        verbose=verbose,
+    latent_inputs = Input(shape=(latent_dim,))
+    x = Dense(last_conv_layer_shape[1] * last_conv_layer_shape[2], activation="relu")(
+        latent_inputs
     )
+    x = Reshape((last_conv_layer_shape[1], last_conv_layer_shape[2]))(x)
 
-    kl_loss_factor = 1 / 2048
+    x_shape = last_conv_layer_shape[1]
+    # Upsampling
+    for i in range(len(decoder_filters)):
+        x = Conv1DTranspose(
+            decoder_filters[i],
+            decoder_kernel_sizes[i],
+            strides=decoder_strides[i],
+            padding="valid",
+            name="conv_transpose{}".format(i),
+        )(x)
+        x = UpSampling1D(size=upsampling_sizes[i])
+        x_shape = calculate_transpose_output_size(
+            x_shape, decoder_kernel_sizes[i], decoder_strides[i]
+        )
+
+    # produce the final output layer such that the output size equals the encoder input size
+    last_layer_padding = data_shape[0] - x_shape
+    x = Conv1DTranspose(
+        1, 1, strides=1, padding="valid", output_padding=last_layer_padding
+    )(x)
+
+    # Decoder output
+    decoder = Model(latent_inputs, x, name="CNN_decoder")
+
+    if verbose:
+        decoder.summary()
+
     vae = VAE(encoder, decoder, kl_loss_factor)
     return vae
 
