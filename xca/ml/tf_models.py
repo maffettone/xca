@@ -126,6 +126,7 @@ def build_consistent_vae(
             x_shape, decoder_kernel_sizes[i], decoder_strides[i]
         )
         x_shape *= upsampling_sizes[i]
+        print(x_shape)
 
     # produce the final output layer such that the output size equals the encoder input size
     last_kernel_size = data_shape[0] - x_shape + 1
