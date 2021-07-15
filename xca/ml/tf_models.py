@@ -126,13 +126,11 @@ def build_consistent_vae(
             x_shape, decoder_kernel_sizes[i], decoder_strides[i]
         )
         x_shape *= upsampling_sizes[i]
-        print(x_shape)
 
     # produce the final output layer such that the output size equals the encoder input size
     last_kernel_size = data_shape[0] - x_shape + 1
     if last_kernel_size < 0:
         pool_size = -last_kernel_size
-        print(pool_size)
         x = AveragePooling1D(pool_size=pool_size, strides=1, padding="valid")(x)
         last_kernel_size = 1
 
