@@ -131,6 +131,7 @@ def build_consistent_vae(
     last_kernel_size = data_shape[0] - x_shape + 1
     if last_kernel_size < 0:
         pool_size = -last_kernel_size
+        print(pool_size)
         x = AveragePooling1D(pool_size=pool_size, strides=None, padding="valid")(x)
         last_kernel_size = 1
 
