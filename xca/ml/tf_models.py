@@ -111,7 +111,7 @@ def build_consistent_vae(
     )
     x = Reshape((last_conv_layer_shape[1], last_conv_layer_shape[2]))(x)
 
-    x_shape = last_conv_layer_shape[1]
+    x_shape = x.shape[1]
     # Upsampling
     for i in range(len(decoder_filters)):
         x = Conv1DTranspose(
