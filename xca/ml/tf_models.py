@@ -121,7 +121,7 @@ def build_consistent_vae(
             padding="valid",
             name="conv_transpose{}".format(i),
         )(x)
-        x = UpSampling1D(size=upsampling_sizes[i])
+        x = UpSampling1D(size=upsampling_sizes[i])(x)
         x_shape = calculate_transpose_output_size(
             x_shape, decoder_kernel_sizes[i], decoder_strides[i]
         )
