@@ -364,8 +364,6 @@ def VAE_denoising_training(
     @tf.function
     def train_step(batch):
         with tf.GradientTape() as tape:
-            print(batch["X"].shape)
-            print(batch["X_noisy"].shape)
             output = model(batch["X_noisy"], training=True)
             reconstruction_loss = model.reconstruction_loss(
                 batch["X"], output["reconstruction"]
@@ -389,8 +387,6 @@ def VAE_denoising_training(
         for batch in dataset:
             loss, output = train_step(batch)
             for key in loss:
-                print(results[key][epoch].shape)
-                print(loss[key].shape)
                 results[key][epoch] += loss[key]
 
         # Save the model every set epochs
