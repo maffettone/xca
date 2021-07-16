@@ -531,6 +531,134 @@ def VAE_training(
     return results
 
 
+def VAE_denoising_training(
+    model,
+    *,
+    dataset_paths,
+    log_noise_min,
+    log_noise_max,
+    out_dir,
+    batch_size,
+    lr,
+    multiprocessing,
+    categorical,
+    data_shape,
+    n_epochs,
+    checkpoint_rate=1,
+    verbose=False,
+    seed=None,
+    **kwargs
+):
+    """
+
+    Parameters
+    ----------
+    model: VAE
+    dataset_paths: list
+        List of paths for import using tf_data_proc.
+        Note that even though the VAE does not need labels to train, all datasets require labels.
+        See the build_dataset() docs.
+    log_noise_min: float
+        Minimum log of noise to sample. Noise added is normally distributed with a standard deviation of 10**noise_log
+    log_noise_max: float
+        Minimum log of noise to sample. Noise added is normally distributed with a standard deviation of 10**noise_log
+    out_dir
+    batch_size
+    lr
+    multiprocessing
+    categorical
+    data_shape
+    n_epochs
+    checkpoint_rate
+    verbose
+    seed
+    kwargs
+
+    Returns
+    -------
+
+    """
+    # Setup
+    start_time = time.time()
+    set_seed(seed)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
+    if verbose:
+        model.summary()
+    optimizer = Adam(lr=lr, **kwargs)
+    # Checkpoints
+    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
+    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+
+    # Build dataset
+    def preprocess(data, label):
+        X = tf.cast(data, tf.float32)
+        noisy = tf.cast(data, tf.float32) + tf.random.normal(
+            data.shape,
+            stddev=10 ** np.random.uniform(log_noise_min, log_noise_max),
+            dtype=tf.float32,
+        )
+        noisy = (noisy - tf.math.reduce_min(noisy, axis=-1)) / (
+            tf.math.reduce_max(noisy, axis=-1) - tf.math.reduce_min(noisy, axis=-1)
+        )
+        return {"X": X, "X_noisy": noisy, "label": label}
+
+    dataset, _ = build_dataset(
+        dataset_paths=dataset_paths,
+        batch_size=batch_size,
+        multiprocessing=multiprocessing,
+        categorical=categorical,
+        val_split=0.0,
+        data_shape=data_shape,
+        # Preprocessing step adding noise and assuming probabilities needed on [0,1] and not on [-1,1]
+        preprocess=preprocess,
+    )
+
+    @tf.function
+    def train_step(batch):
+        with tf.GradientTape() as tape:
+            output = model(batch["X_noisy"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            loss = reconstruction_loss + model.kl_loss_weight * kl_loss
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return (
+            dict(reconstruction_loss=reconstruction_loss, kl_loss=kl_loss, loss=loss),
+            output,
+        )
+
+    # Actual training
+    results = defaultdict(list)
+    for epoch in range(n_epochs):
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        start = time.time()
+        for batch in dataset:
+            loss, output = train_step(batch)
+            for key in loss:
+                results[key][epoch] += loss[key]
+
+        # Save the model every set epochs
+        if (epoch + 1) % checkpoint_rate == 0:
+            checkpoint.save(file_prefix=checkpoint_prefix)
+        if verbose:
+            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+    if verbose:
+        print()
+        print("Time for full training is {} sec".format(time.time() - start_time))
+
+    for key in results:
+        with open(Path(out_dir) / (key + ".txt"), "w") as f:
+            for result in results[key]:
+                f.write(str(result))
+                f.write("\n")
+
+
 def build_CNN_model(
     *,
     data_shape,
