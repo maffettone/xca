@@ -658,6 +658,8 @@ def VAE_denoising_training(
                 f.write(str(result))
                 f.write("\n")
 
+    return results
+
 
 def build_CNN_model(
     *,
