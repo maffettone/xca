@@ -364,8 +364,9 @@ def VAE_denoising_training(
     @tf.function
     def train_step(batch):
         with tf.GradientTape() as tape:
+            print(batch["X"].shape)
+            print(batch["X_noisy"].shape)
             output = model(batch["X_noisy"], training=True)
-            print(output.shape)
             reconstruction_loss = model.reconstruction_loss(
                 batch["X"], output["reconstruction"]
             )
