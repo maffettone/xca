@@ -598,10 +598,8 @@ def VAE_denoising_training(
             stddev=10 ** np.random.uniform(log_noise_min, log_noise_max),
             dtype=tf.float32,
         )
-        min = tf.math.reduce_min(noisy, axis=-1)
-        print(min.shape)
-        noisy = (noisy - tf.math.reduce_min(noisy, axis=-1)) / (
-            tf.math.reduce_max(noisy, axis=-1) - tf.math.reduce_min(noisy, axis=-1)
+        noisy = (noisy - tf.math.reduce_min(noisy, axis=0, keepdims=True)) / (
+            tf.math.reduce_max(noisy, axis=0, keepdims=True) - tf.math.reduce_min(noisy, axis=0, keepdims=True)
         )
         return {"X": X, "X_noisy": noisy, "label": label}
 
