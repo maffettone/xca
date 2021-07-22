@@ -406,7 +406,7 @@ class VAE(Model):
         logits = self.decoder(z, *args, **kwargs)
         return logits
 
-    def __call__(self, x, *args, **kwargs):
+    def call(self, x, *args, **kwargs):
         z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
         z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
         reconstruction = self.decode(z, *args, **kwargs)
@@ -415,6 +415,9 @@ class VAE(Model):
             "z_log_sigma": z_log_sigma,
             "reconstruction": reconstruction,
         }
+
+    def __call__(self, x, *args, **kwargs):
+        return self.call(x, *args, **kwargs)
 
 
 def VAE_training(
@@ -463,6 +466,7 @@ def VAE_training(
     set_seed(seed)
     Path(out_dir).mkdir(exist_ok=True, parents=True)
     if verbose:
+        model.build((None, *data_shape))
         model.summary()
     optimizer = Adam(lr=lr, **kwargs)
     # Checkpoints
