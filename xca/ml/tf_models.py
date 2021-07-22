@@ -225,6 +225,7 @@ def build_CNN_encoder_model(
 
 def build_CNN_decoder_model(
     *,
+    data_shape,
     latent_dim,
     last_conv_layer_shape,
     filters,
@@ -278,6 +279,9 @@ def build_CNN_decoder_model(
             name="conv_transpose{}".format(i),
         )(x)
 
+    x = Flatten()(x)
+    x = Dense(data_shape[0], activation="relu")(x)
+    x = Reshape(data_shape)(x)
     # Decoder output
     decoder = Model(latent_inputs, x, name="CNN_decoder")
 
@@ -603,7 +607,8 @@ def VAE_denoising_training(
             dtype=tf.float32,
         )
         noisy = (noisy - tf.math.reduce_min(noisy, axis=0, keepdims=True)) / (
-            tf.math.reduce_max(noisy, axis=0, keepdims=True) - tf.math.reduce_min(noisy, axis=0, keepdims=True)
+            tf.math.reduce_max(noisy, axis=0, keepdims=True)
+            - tf.math.reduce_min(noisy, axis=0, keepdims=True)
         )
         return {"X": X, "X_noisy": noisy, "label": label}
 
