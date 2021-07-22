@@ -280,7 +280,7 @@ def build_CNN_decoder_model(
         )(x)
 
     x = Flatten()(x)
-    x = Dense(data_shape[0], activation="relu")(x)
+    x = Dense(data_shape[0], activation="relu", name="dense_out")(x)
     x = Reshape(data_shape)(x)
     # Decoder output
     decoder = Model(latent_inputs, x, name="CNN_decoder")
