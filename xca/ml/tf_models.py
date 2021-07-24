@@ -430,15 +430,15 @@ def VAE_training(
     dataset_paths,
     out_dir,
     batch_size,
-    lr,
     multiprocessing,
     categorical,
     data_shape,
     n_epochs,
+    optimizer=None,
+    learning_rate=0.001,
     checkpoint_rate=1,
     verbose=False,
-    seed=None,
-    **kwargs
+    seed=None
 ):
     """
 
@@ -451,15 +451,17 @@ def VAE_training(
         See the build_dataset() docs.
     out_dir
     batch_size
-    lr
     multiprocessing
     categorical
     data_shape
     n_epochs
     checkpoint_rate
+    learning_rate: float
+        Learning rate if no optimizer is given
+    optimizer: Optimizer, None
+        Default to Adam with learning rate
     verbose
     seed
-    kwargs
 
     Returns
     -------
@@ -472,7 +474,8 @@ def VAE_training(
     if verbose:
         model.build((None, *data_shape))
         model.summary()
-    optimizer = Adam(lr=lr, **kwargs)
+    if optimizer is None:
+        optimizer = Adam(learning_rate=learning_rate)
     # Checkpoints
     checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
     checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
