@@ -3,7 +3,6 @@ import numpy as np
 import time
 import os
 import tensorflow as tf
-import math
 from tensorflow.keras.layers import (
     BatchNormalization,
     Dense,
@@ -23,7 +22,6 @@ from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
-from tensorflow.keras import metrics
 from .tf_data_proc import build_dataset
 from pathlib import Path
 from collections import defaultdict
@@ -55,7 +53,8 @@ def build_consistent_vae(
 ):
 
     """
-    Given a set of encoder hyperparameters, this builds a decoder which produces output of the correct shape and returns a consistent vae model.
+    Given a set of encoder hyperparameters, this builds a decoder which produces output of the correct shape and returns
+    a consistent vae model.
 
     ** Note: Padding is assumed to be 'valid' for all convolutional layers **
 
@@ -68,7 +67,8 @@ def build_consistent_vae(
     encoder_dense_dims: list of int
         numbers of neurons in each of the encoder's dense, fully connected layers
     encoder_filters: list of int
-        number of filters in each convolutional layer of the encoder model. consistent with length of encoder_kernel_sizes, encoder_pool_sizes, encoder_strides, and encoder_paddings
+        number of filters in each convolutional layer of the encoder model. consistent with length of
+        encoder_kernel_sizes, encoder_pool_sizes, encoder_strides, and encoder_paddings
     encoder_kernel_sizes: list of int
         kernel sizes for each convolutional layer of the encoder model. consistent with length of other input lists
     encoder_strides: list of int
