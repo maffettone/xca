@@ -383,7 +383,11 @@ class VAE(Model):
         """Computes the Mean squared error loss with a batchwise sum as a reduction"""
         reconstruction_loss = tf.reduce_sum(
             tf.keras.losses.mean_squared_error(
-                tf.squeeze(data), tf.squeeze(reconstruction)
+                tf.reshape(data, (tf.shape(data)[0], tf.shape(data)[1])),
+                tf.reshape(
+                    reconstruction,
+                    (tf.shape(reconstruction)[0], tf.shape(reconstruction)[1]),
+                ),
             ),
             axis=0,
         )
