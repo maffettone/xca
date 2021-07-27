@@ -608,6 +608,10 @@ def VAE_denoising_training(
     # Build dataset
     def preprocess(data, label):
         X = tf.cast(data, tf.float32)
+        X = (X - tf.math.reduce_min(X, axis=0, keepdims=True)) / (
+            tf.math.reduce_max(X, axis=0, keepdims=True)
+            - tf.math.reduce_min(X, axis=0, keepdims=True)
+        )
         noisy = tf.cast(data, tf.float32) + tf.random.normal(
             data.shape,
             stddev=10 ** np.random.uniform(log_noise_min, log_noise_max),
