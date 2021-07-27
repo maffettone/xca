@@ -112,8 +112,27 @@ def build_consistent_vae(
     x = Reshape((last_conv_layer_shape[1], last_conv_layer_shape[2]))(x)
 
     x_shape = x.shape[1]
-    # Upsampling
+    test_shape = x_shape
+    last_valid_index = 0
+
+    #Calculate the final output size with current parameters 
     for i in range(len(decoder_filters)):
+        test_shape = calculate_transpose_output_size(
+            test_shape, decoder_kernel_sizes[i], decoder_strides[i]
+        )
+        #Make sure that we don't overshoot the original input size
+        if test_shape > data_shape[0]:
+            last_valid_index = i
+            break
+        test_shape *= upsampling_sizes[i]
+        #Do it again after factoring in upsampling
+        if test_shape > data_shape[0]:
+            last_valid_index = i
+            break
+    
+
+    # Upsampling
+    for i in range(last_valid_index):
         x = Conv1DTranspose(
             decoder_filters[i],
             decoder_kernel_sizes[i],
@@ -121,19 +140,14 @@ def build_consistent_vae(
             padding="valid",
             name="conv_transpose{}".format(i),
         )(x)
-        x = UpSampling1D(size=upsampling_sizes[i])(x)
-        x_shape = calculate_transpose_output_size(
+        x_shape = calculate_transpote_output_size(
             x_shape, decoder_kernel_sizes[i], decoder_strides[i]
         )
+        x = UpSampling1D(size=upsampling_sizes[i])(x)
         x_shape *= upsampling_sizes[i]
 
     # produce the final output layer such that the output size equals the encoder input size
     last_kernel_size = data_shape[0] - x_shape + 1
-    if last_kernel_size < 0:
-        pool_size = -last_kernel_size
-        x = AveragePooling1D(pool_size=pool_size, strides=1, padding="valid")(x)
-        last_kernel_size = 1
-
     x = Conv1DTranspose(1, last_kernel_size, strides=1, padding="valid")(x)
 
     # Decoder output
