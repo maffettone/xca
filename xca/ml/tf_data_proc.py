@@ -225,6 +225,7 @@ def build_dataset(
     val_split,
     data_shape,
     n_classes=0,
+    preprocess=None,
 ):
     """
     Constructs training dataset for categorical classification or continuous regression from
@@ -242,6 +243,8 @@ def build_dataset(
     n_classes: int
         Number of classes for classification (if categorical).
         Defaults to 0 with no explicit assumption of classification.
+    preprocess: callable, None
+        Optional preprocessing override
 
     Returns
     -------
@@ -261,18 +264,31 @@ def build_dataset(
             lambda e: parse_categorical_TFR(e, data_shape),
             num_parallel_calls=multiprocessing,
         )
-        dataset = dataset.map(
-            lambda d, l: categorical_preprocess(d, l, n_classes),
-            num_parallel_calls=multiprocessing,
-        )
+        if preprocess is None:
+            dataset = dataset.map(
+                lambda d, l: categorical_preprocess(d, l, n_classes),
+                num_parallel_calls=multiprocessing,
+            )
+        else:
+            dataset = dataset.map(
+                lambda d, l: preprocess(d, l),
+                num_parallel_calls=multiprocessing,
+            )
     else:
         dataset = dataset.map(
             lambda e: parse_continuous_TFR(e, data_shape),
             num_parallel_calls=multiprocessing,
         )
-        dataset = dataset.map(
-            lambda d, l: continuous_preprocess(d, l), num_parallel_calls=multiprocessing
-        )
+        if preprocess is None:
+            dataset = dataset.map(
+                lambda d, l: continuous_preprocess(d, l),
+                num_parallel_calls=multiprocessing,
+            )
+        else:
+            dataset = dataset.map(
+                lambda d, l: preprocess(d, l),
+                num_parallel_calls=multiprocessing,
+            )
     train_dataset = dataset.take(train_size)
     val_dataset = dataset.skip(train_size)
     train_dataset = train_dataset.batch(batch_size)

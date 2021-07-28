@@ -28,7 +28,7 @@ class Data:
 
     def apply_mask(self, mask):
         for attr, value in self.__dict__.items():
-            if attr in ("Q", "FoQ", "IoQ", "Q_mag", "hkl", "tth", "mult"):
+            if attr in ("Q", "FoQ", "I", "Q_mag", "hkl", "tth", "mult"):
                 setattr(self, attr, value[mask])
 
 

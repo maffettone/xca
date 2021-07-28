@@ -5,6 +5,7 @@ A set of convenience functions to aid in generating XRD patterns from dictionari
 import os
 from pathlib import Path
 import json
+import uuid
 import numpy as np
 import xarray as xa
 from xca.data_synthesis.cctbx import (
@@ -127,6 +128,26 @@ def multi_phase_wrapper(kwargs):
     return multi_phase_profile(input_cifs, **kwargs)
 
 
+def complete_profile_wrapper_io(path, kwargs):
+    da = create_complete_profile(**kwargs)
+    metadata_adjustments(da)
+    da.to_netcdf(path / f"{uuid.uuid4().hex}.nc")
+
+
+def multi_wavelength_wrapper_io(path, kwargs):
+    wavelengths = kwargs.pop("wavelength")
+    da = sum_multi_wavelength_profiles(wavelengths, **kwargs)
+    metadata_adjustments(da)
+    da.to_netcdf(path / f"{uuid.uuid4().hex}.nc")
+
+
+def multi_phase_wrapper_io(path, kwargs):
+    input_cifs = kwargs.pop("input_cif")
+    da = multi_phase_profile(input_cifs, **kwargs)
+    metadata_adjustments(da)
+    da.to_netcdf(path / f"{uuid.uuid4().hex}.nc")
+
+
 def cycle_params(
     n_profiles,
     output_path,
@@ -136,7 +157,6 @@ def cycle_params(
     preferred_axes=None,
     noise_exp=None,
     n_jobs=1,
-    start_idx=0,
     **kwargs,
 ):
     """
@@ -235,25 +255,46 @@ def cycle_params(
     if n_jobs <= 0:
         n_jobs = os.cpu_count()
     pool = Pool(n_jobs)
-    if isinstance(_default["input_cif"], list):
-        results = list(pool.imap_unordered(multi_phase_wrapper, params_list))
-    elif isinstance(_default["wavelength"], list):
-        results = list(pool.imap_unordered(multi_wavelength_wrapper, params_list))
-    else:
-        results = list(pool.imap_unordered(complete_profile_wrapper, params_list))
-    pool.close()
-    pool.join()
 
     if path.is_dir():
-        for idx, da in enumerate(results):
-            metadata_adjustments(da)
-            da.to_netcdf(path / f"{start_idx+idx}.nc")
-    elif path.suffix == ".npy":
-        np.save(str(output_path), np.stack([da.data for da in results], axis=-1))
+        """Fill directory with UIDs"""
+        if isinstance(_default["input_cif"], list):
+            pool.starmap(
+                multi_phase_wrapper_io,
+                zip([path for _ in range(len(params_list))], params_list),
+            )
+        elif isinstance(_default["wavelength"], list):
+            pool.starmap(
+                multi_wavelength_wrapper_io,
+                zip([path for _ in range(len(params_list))], params_list),
+            )
+        else:
+            pool.starmap(
+                complete_profile_wrapper_io,
+                zip([path for _ in range(len(params_list))], params_list),
+            )
+        pool.close()
+        pool.join()
+        return
+    else:
+        if isinstance(_default["input_cif"], list):
+            results = list(pool.imap_unordered(multi_phase_wrapper, params_list))
+        elif isinstance(_default["wavelength"], list):
+            results = list(pool.imap_unordered(multi_wavelength_wrapper, params_list))
+        else:
+            results = list(pool.imap_unordered(complete_profile_wrapper, params_list))
+        pool.close()
+        pool.join()
+    return result_output(results, path)
+
+
+def result_output(results, path):
+    if path.suffix == ".npy":
+        np.save(str(path), np.stack([da.data for da in results], axis=-1))
     elif path.suffix == ".csv":
-        cols = ["Intensity {}".format(idx) for idx in range(n_profiles)]
+        cols = ["Intensity {}".format(idx) for idx in range(len(results))]
         np.savetxt(
-            str(output_path),
+            str(path),
             np.stack([da.data for da in results], axis=-1),
             delimiter=",",
             header=",".join(cols),
