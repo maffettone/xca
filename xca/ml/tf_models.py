@@ -115,21 +115,20 @@ def build_consistent_vae(
     test_shape = x_shape
     last_valid_index = 0
 
-    #Calculate the final output size with current parameters 
+    # Calculate the final output size with current parameters
     for i in range(len(decoder_filters)):
         test_shape = calculate_transpose_output_size(
             test_shape, decoder_kernel_sizes[i], decoder_strides[i]
         )
-        #Make sure that we don't overshoot the original input size
+        # Make sure that we don't overshoot the original input size
         if test_shape > data_shape[0]:
             last_valid_index = i
             break
         test_shape *= upsampling_sizes[i]
-        #Do it again after factoring in upsampling
+        # Do it again after factoring in upsampling
         if test_shape > data_shape[0]:
             last_valid_index = i
             break
-    
 
     # Upsampling
     for i in range(last_valid_index):
@@ -568,11 +567,12 @@ def VAE_denoising_training(
     log_noise_max,
     out_dir,
     batch_size,
-    lr,
     multiprocessing,
     categorical,
     data_shape,
     n_epochs,
+    optimizer=None,
+    learning_rate=0.001,
     checkpoint_rate=1,
     verbose=False,
     seed=None,
@@ -613,7 +613,8 @@ def VAE_denoising_training(
     Path(out_dir).mkdir(exist_ok=True, parents=True)
     if verbose:
         model.summary()
-    optimizer = Adam(lr=lr, **kwargs)
+    if optimizer is None:
+        optimizer = Adam(learning_rate=learning_rate)
     # Checkpoints
     checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
     checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
