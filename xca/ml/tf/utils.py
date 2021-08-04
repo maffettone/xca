@@ -1,3 +1,7 @@
+import numpy as np
+import tensorflow as tf
+
+
 def _default_CNN_hyperparameters():
     hyperparams = {
         # Keras Params
@@ -49,3 +53,8 @@ def load_hyperparameters(params_file=None, params_dict=None):
     if params_dict:
         params.update(params_dict)
     return params
+
+
+def set_seed(seed):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
