@@ -34,7 +34,7 @@ def build_consistent_vae(
     encoder_kernel_sizes,
     encoder_pool_sizes,
     encoder_strides,
-    kl_loss_factor,
+    kl_loss_weight,
     verbose=False,
     **kwargs
 ):
@@ -62,7 +62,7 @@ def build_consistent_vae(
         number of strides in each convolutional layer of the encoder model. consistent with length of other input lists
     encoder_pool_sizes: list of int
         pool sizes for each convolutional layer of the encoder model. consistent with length of other input lists
-    kl_loss_factor: float
+    kl_loss_weight: float
         scaler for kl-divergence loss
     verbose: bool
         if True, displays model summaries for the encoder and decoder
@@ -142,7 +142,7 @@ def build_consistent_vae(
     if verbose:
         decoder.summary()
 
-    vae = VAE(encoder, decoder, kl_loss_factor)
+    vae = VAE(encoder, decoder, kl_loss_weight)
     return vae
 
 
