@@ -1,6 +1,5 @@
 import time
 from collections import defaultdict
-from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
@@ -17,10 +16,9 @@ from tensorflow.python.keras.layers import (
     Dropout,
     Lambda,
 )
-from tensorflow.python.keras.optimizer_v2.adam import Adam
 
 from xca.ml.tf.data_proc import build_dataset
-from xca.ml.tf.utils import set_seed
+from xca.ml.tf.utils import setup_training, breakdown_training
 
 
 def calculate_transpose_output_size(input_size, kernel_size, stride):
@@ -36,7 +34,7 @@ def build_consistent_vae(
     encoder_kernel_sizes,
     encoder_pool_sizes,
     encoder_strides,
-    kl_loss_factor,
+    kl_loss_weight,
     verbose=False,
     **kwargs
 ):
@@ -64,7 +62,7 @@ def build_consistent_vae(
         number of strides in each convolutional layer of the encoder model. consistent with length of other input lists
     encoder_pool_sizes: list of int
         pool sizes for each convolutional layer of the encoder model. consistent with length of other input lists
-    kl_loss_factor: float
+    kl_loss_weight: float
         scaler for kl-divergence loss
     verbose: bool
         if True, displays model summaries for the encoder and decoder
@@ -144,7 +142,7 @@ def build_consistent_vae(
     if verbose:
         decoder.summary()
 
-    vae = VAE(encoder, decoder, kl_loss_factor)
+    vae = VAE(encoder, decoder, kl_loss_weight)
     return vae
 
 
@@ -396,7 +394,7 @@ class VAE(Model):
         )
         return reconstruction_loss
 
-    def loss(self, x, z_mean, z_log_sigma, reconstruction):
+    def loss(self, x, z_mean, z_log_sigma, reconstruction, *args):
         return self.kl_loss_weight * self.kl_loss(
             z_mean, z_log_sigma
         ) + self.reconstruction_loss(x, reconstruction)
@@ -431,7 +429,108 @@ class VAE(Model):
         return self.call(x, *args, **kwargs)
 
 
-def VAE_training(
+class PredictiveVAE(VAE):
+    def __init__(
+        self,
+        *,
+        encoder,
+        decoder,
+        predictor,
+        mode,
+        kl_loss_weight=1.0,
+        predictive_loss_weight=1.0,
+        **kwargs
+    ):
+        """
+        VAE with predictive module for classification or regression
+
+        Parameters
+        ----------
+        encoder: Model
+        decoder: Model
+        predictor: Model
+        mode: str
+            Operational mode, one of {"classification", "regression"}
+        kl_loss_weight: float
+        predictive_loss_weight: float
+        kwargs: dict
+        """
+        super(PredictiveVAE, self).__init__(
+            encoder, decoder, kl_loss_weight=kl_loss_weight, **kwargs
+        )
+        self.predictor = predictor
+        self.predictive_loss_weight = predictive_loss_weight
+        self.predictive_loss = {
+            "classification": tf.keras.losses.CategoricalCrossentropy(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+            "regression": tf.keras.losses.MeanSquaredError(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+        }[mode.lower()]
+
+    def loss(self, *x, z_mean, z_log_sigma, reconstruction, y_true, y_pred):
+        return (
+            self.kl_loss_weight * self.kl_loss(z_mean, z_log_sigma)
+            + self.predictive_loss_weight * self.predictive_loss(y_true, y_pred)
+            + self.reconstruction_loss(x, reconstruction)
+        )
+
+    def call(self, x, *args, **kwargs):
+        z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        y_pred = self.predictor(z)
+        reconstruction = self.decode(z, *args, **kwargs)
+        return {
+            "z_mean": z_mean,
+            "z_log_sigma": z_log_sigma,
+            "reconstruction": reconstruction,
+            "y_pred": y_pred,
+        }
+
+
+def _run_epoch(
+    *,
+    epoch,
+    train_step,
+    dataset,
+    results_dict,
+    checkpoint,
+    checkpoint_rate,
+    checkpoint_prefix,
+    verbose
+):
+    """
+    Convenience function for refactorization of running internal epoch for VAEs and like methods
+    Parameters
+    ----------
+    epoch
+    train_step
+    dataset
+    results_dict
+    checkpoint
+    checkpoint_rate
+    checkpoint_prefix
+    verbose
+
+    Returns
+    -------
+
+    """
+    start = time.time()
+    for batch in dataset:
+        loss, output = train_step(batch)
+        for key in loss:
+            results_dict[key][epoch] += loss[key]
+
+    # Save the model every set epochs
+    if (epoch + 1) % checkpoint_rate == 0:
+        checkpoint.save(file_prefix=checkpoint_prefix)
+    if verbose:
+        print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+
+def training(
     model,
     *,
     dataset_paths,
@@ -475,18 +574,15 @@ def VAE_training(
 
     """
     # Setup
-    start_time = time.time()
-    set_seed(seed)
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-    if verbose:
-        model.build((None, *data_shape))
-        model.summary()
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
     dataset, _ = build_dataset(
@@ -524,32 +620,26 @@ def VAE_training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
-
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
-
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results
 
 
-def VAE_denoising_training(
+def denoiser_training(
     model,
     *,
     dataset_paths,
@@ -601,18 +691,15 @@ def VAE_denoising_training(
 
     """
     # Setup
-    start_time = time.time()
-    set_seed(seed)
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-    if verbose:
-        model.build((None, *data_shape))
-        model.summary()
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
     def preprocess(data, label):
@@ -665,26 +752,111 @@ def VAE_denoising_training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
+    return results
 
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+
+def predictive_training(
+    model,
+    *,
+    dataset_paths,
+    out_dir,
+    batch_size,
+    multiprocessing,
+    categorical,
+    data_shape,
+    n_epochs,
+    optimizer=None,
+    learning_rate=0.001,
+    n_classes=0,
+    checkpoint_rate=1,
+    verbose=False,
+    seed=None
+):
+    # Setup
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
+
+    # Build dataset
+    dataset, _ = build_dataset(
+        dataset_paths=dataset_paths,
+        batch_size=batch_size,
+        multiprocessing=multiprocessing,
+        categorical=categorical,
+        val_split=0.0,
+        data_shape=data_shape,
+        n_classes=n_classes,
+    )
+
+    @tf.function
+    def train_step(batch):
+        with tf.GradientTape() as tape:
+            output = model(batch["X"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            predictive_loss = model.predictive_loss(batch["label"], output["y_pred"])
+            loss = (
+                reconstruction_loss
+                + model.kl_loss_weight * kl_loss
+                + model.predictive_loss_weight * predictive_loss
+            )
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return (
+            dict(
+                reconstruction_loss=reconstruction_loss,
+                kl_loss=kl_loss,
+                predictive_loss=predictive_loss,
+                loss=loss,
+            ),
+            output,
+        )
+
+    # Actual training
+    results = defaultdict(list)
+    for epoch in range(n_epochs):
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        results["predictive_loss"].append(0.0)
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
+
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results
