@@ -489,6 +489,47 @@ class PredictiveVAE(VAE):
         }
 
 
+def _run_epoch(
+    *,
+    epoch,
+    train_step,
+    dataset,
+    results_dict,
+    checkpoint,
+    checkpoint_rate,
+    checkpoint_prefix,
+    verbose
+):
+    """
+    Convenience function for refactorization of running internal epoch for VAEs and like methods
+    Parameters
+    ----------
+    epoch
+    train_step
+    dataset
+    results_dict
+    checkpoint
+    checkpoint_rate
+    checkpoint_prefix
+    verbose
+
+    Returns
+    -------
+
+    """
+    start = time.time()
+    for batch in dataset:
+        loss, output = train_step(batch)
+        for key in loss:
+            results_dict[key][epoch] += loss[key]
+
+    # Save the model every set epochs
+    if (epoch + 1) % checkpoint_rate == 0:
+        checkpoint.save(file_prefix=checkpoint_prefix)
+    if verbose:
+        print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+
 def training(
     model,
     *,
@@ -579,17 +620,16 @@ def training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
-
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
     # Closeout and save
     breakdown_training(
@@ -712,17 +752,109 @@ def denoiser_training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
+
+    return results
+
+
+def predictive_training(
+    model,
+    *,
+    dataset_paths,
+    out_dir,
+    batch_size,
+    multiprocessing,
+    categorical,
+    data_shape,
+    n_epochs,
+    optimizer=None,
+    learning_rate=0.001,
+    checkpoint_rate=1,
+    verbose=False,
+    seed=None
+):
+    # Setup
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
+
+    # Build dataset
+    dataset, _ = build_dataset(
+        dataset_paths=dataset_paths,
+        batch_size=batch_size,
+        multiprocessing=multiprocessing,
+        categorical=categorical,
+        val_split=0.0,
+        data_shape=data_shape,
+        preprocess=lambda data, label: {
+            "X": tf.cast(data, tf.float32),
+            "label": label,
+        },
+    )
+
+    @tf.function
+    def train_step(batch):
+        with tf.GradientTape() as tape:
+            output = model(batch["X"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            predictive_loss = model.predictive_loss(batch["label"], output["y_pred"])
+            loss = (
+                reconstruction_loss
+                + model.kl_loss_weight * kl_loss
+                + model.predictive_loss_weight * predictive_loss
+            )
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return (
+            dict(
+                reconstruction_loss=reconstruction_loss,
+                kl_loss=kl_loss,
+                predictive_loss=predictive_loss,
+                loss=loss,
+            ),
+            output,
+        )
+
+    # Actual training
+    results = defaultdict(list)
+    for epoch in range(n_epochs):
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        results["predictive_loss"].append(0.0)
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
     # Closeout and save
     breakdown_training(
