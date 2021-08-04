@@ -245,7 +245,8 @@ def build_CNN_decoder_model(
     latent_dim: int
         number of variables defining the latent space
     last_conv_layer_shape: tuple of int
-        shape of the output from the last convolutional layer in the encoder; used to calculate dimensionality of the decoder's initial dense layer
+        shape of the output from the last convolutional layer in the encoder;
+        used to calculate dimensionality of the decoder's initial dense layer
     filters: list of int
         consistent length with other items, number of filters for each Conv1DTranspose layer
     kernel_sizes: list of int
