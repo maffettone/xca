@@ -593,7 +593,10 @@ def VAE_denoising_training(
         Minimum log of noise to sample. Noise added is normally distributed with a standard deviation of 10**noise_log
     out_dir
     batch_size
-    lr
+    learning_rate: float
+        Learning rate if no optimizer is given
+    optimizer: Optimizer, None
+        Default to Adam with learning rate
     multiprocessing
     categorical
     data_shape
@@ -612,6 +615,7 @@ def VAE_denoising_training(
     set_seed(seed)
     Path(out_dir).mkdir(exist_ok=True, parents=True)
     if verbose:
+        model.build((None, *data_shape))
         model.summary()
     if optimizer is None:
         optimizer = Adam(learning_rate=learning_rate)
@@ -801,22 +805,21 @@ def build_fusion_ensemble_model(ensemble_size, model_builder, *, data_shape, **k
     return model
 
 
-def model_training(
+def model_training(  # noqa: C901
     model,
     *,
     dataset_paths,
     out_dir,
     batch_size,
-    lr,
     multiprocessing,
     categorical,
     data_shape,
     n_epochs,
+    optimizer=None,
+    learning_rate=0.001,
     n_classes=0,
     val_split=0.2,
     checkpoint_rate=1,
-    beta_1=0.5,
-    beta_2=0.999,
     verbose=False,
     seed=None,
     **kwargs
@@ -832,16 +835,17 @@ def model_training(
     dataset_paths: list of str, list of Path
     out_dir: str, Path
     batch_size: int
-    lr: float
     multiprocessing: int
     categorical: bool
     data_shape: tuple
     n_epochs: int
     n_classes: int
+    learning_rate: float
+        Learning rate if no optimizer is given
+    optimizer: Optimizer, None
+        Default to Adam with learning rate
     val_split: float
     checkpoint_rate: int
-    beta_1: float
-    beta_2: float
     verbose: bool
     seed: int
     kwargs:
@@ -859,6 +863,9 @@ def model_training(
     if verbose:
         model.summary()
 
+    if optimizer is None:
+        optimizer = Adam(learning_rate=learning_rate)
+
     # Build dataset
     dataset, val_dataset = build_dataset(
         dataset_paths=dataset_paths,
@@ -874,8 +881,6 @@ def model_training(
         loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
     else:
         loss_fn = tf.keras.losses.MeanSquaredError()
-
-    optimizer = Adam(lr=lr, beta_1=beta_1, beta_2=beta_2)
 
     # Checkpoints
     checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
