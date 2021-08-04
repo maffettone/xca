@@ -783,6 +783,7 @@ def predictive_training(
     n_epochs,
     optimizer=None,
     learning_rate=0.001,
+    n_classes=0,
     checkpoint_rate=1,
     verbose=False,
     seed=None
@@ -806,10 +807,7 @@ def predictive_training(
         categorical=categorical,
         val_split=0.0,
         data_shape=data_shape,
-        preprocess=lambda data, label: {
-            "X": tf.cast(data, tf.float32),
-            "label": label,
-        },
+        n_classes=n_classes,
     )
 
     @tf.function
