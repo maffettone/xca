@@ -1,6 +1,5 @@
 import time
 from collections import defaultdict
-from pathlib import Path
 
 import tensorflow as tf
 from tensorflow.python.keras import Input, Model
@@ -15,10 +14,9 @@ from tensorflow.python.keras.layers import (
     Dense,
     Average,
 )
-from tensorflow.python.keras.optimizer_v2.adam import Adam
 
 from xca.ml.tf.data_proc import build_dataset
-from xca.ml.tf.utils import set_seed
+from xca.ml.tf.utils import setup_training, breakdown_training
 
 
 def build_CNN_model(
@@ -176,16 +174,15 @@ def training(  # noqa: C901
     -------
 
     """
-    start_time = time.time()
-    set_seed(seed)
-
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-
-    if verbose:
-        model.summary()
-
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
     dataset, val_dataset = build_dataset(
@@ -202,11 +199,6 @@ def training(  # noqa: C901
         loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
     else:
         loss_fn = tf.keras.losses.MeanSquaredError()
-
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
 
     @tf.function
     def train_step(batch):
@@ -265,14 +257,10 @@ def training(  # noqa: C901
             checkpoint.save(file_prefix=checkpoint_prefix)
         if verbose:
             print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
 
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results
