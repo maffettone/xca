@@ -396,7 +396,7 @@ class VAE(Model):
         )
         return reconstruction_loss
 
-    def loss(self, x, z_mean, z_log_sigma, reconstruction):
+    def loss(self, x, z_mean, z_log_sigma, reconstruction, *args):
         return self.kl_loss_weight * self.kl_loss(
             z_mean, z_log_sigma
         ) + self.reconstruction_loss(x, reconstruction)
@@ -431,7 +431,67 @@ class VAE(Model):
         return self.call(x, *args, **kwargs)
 
 
-def VAE_training(
+class PredictiveVAE(VAE):
+    def __init__(
+        self,
+        *,
+        encoder,
+        decoder,
+        predictor,
+        mode,
+        kl_loss_weight=1.0,
+        predictive_loss_weight=1.0,
+        **kwargs
+    ):
+        """
+        VAE with predictive module for classification or regression
+
+        Parameters
+        ----------
+        encoder: Model
+        decoder: Model
+        predictor: Model
+        mode: str
+            Operational mode, one of {"classification", "regression"}
+        kl_loss_weight: float
+        predictive_loss_weight: float
+        kwargs: dict
+        """
+        super(PredictiveVAE, self).__init__(
+            encoder, decoder, kl_loss_weight=kl_loss_weight, **kwargs
+        )
+        self.predictor = predictor
+        self.predictive_loss_weight = predictive_loss_weight
+        self.predictive_loss = {
+            "classification": tf.keras.losses.CategoricalCrossentropy(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+            "regression": tf.keras.losses.MeanSquaredError(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+        }[mode.lower()]
+
+    def loss(self, *x, z_mean, z_log_sigma, reconstruction, y_true, y_pred):
+        return (
+            self.kl_loss_weight * self.kl_loss(z_mean, z_log_sigma)
+            + self.predictive_loss_weight * self.predictive_loss(y_true, y_pred)
+            + self.reconstruction_loss(x, reconstruction)
+        )
+
+    def call(self, x, *args, **kwargs):
+        z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        y_pred = self.predictor(z)
+        reconstruction = self.decode(z, *args, **kwargs)
+        return {
+            "z_mean": z_mean,
+            "z_log_sigma": z_log_sigma,
+            "reconstruction": reconstruction,
+            "y_pred": y_pred,
+        }
+
+
+def training(
     model,
     *,
     dataset_paths,
@@ -549,7 +609,7 @@ def VAE_training(
     return results
 
 
-def VAE_denoising_training(
+def denoiser_training(
     model,
     *,
     dataset_paths,
