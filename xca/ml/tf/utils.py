@@ -1,3 +1,10 @@
+import time
+from pathlib import Path
+from tensorflow.python.keras.optimizer_v2.adam import Adam
+import numpy as np
+import tensorflow as tf
+
+
 def _default_CNN_hyperparameters():
     hyperparams = {
         # Keras Params
@@ -49,3 +56,39 @@ def load_hyperparameters(params_file=None, params_dict=None):
     if params_dict:
         params.update(params_dict)
     return params
+
+
+def set_seed(seed):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+
+def setup_training(
+    *, model, seed, out_dir, optimizer, verbose, data_shape, learning_rate
+):
+    """Common initialization across TF training"""
+    start_time = time.time()
+    set_seed(seed)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
+    if verbose:
+        model.build((None, *data_shape))
+        model.summary()
+    if optimizer is None:
+        optimizer = Adam(learning_rate=learning_rate)
+    # Checkpoints
+    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
+    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    return start_time, checkpoint_prefix, checkpoint, optimizer
+
+
+def breakdown_training(*, verbose, start_time, results, out_dir):
+    if verbose:
+        print()
+        print("Time for full training is {} sec".format(time.time() - start_time))
+
+    for key in results:
+        with open(Path(out_dir) / (key + ".txt"), "w") as f:
+            for result in results[key]:
+                f.write(str(result))
+                f.write("\n")

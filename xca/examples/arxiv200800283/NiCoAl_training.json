@@ -18,7 +18,7 @@
     "checkpoint_rate": 2,
     "continue": false,
     "val_split": 0.15,
-    "ensemble_size": 50,
+    "ensemble_size": 10,
 
     "filters": [8, 8, 4],
     "kernel_sizes": [5,5,5],

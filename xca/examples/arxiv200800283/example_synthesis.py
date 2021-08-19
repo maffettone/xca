@@ -48,10 +48,13 @@ def pattern_simulation(n_patterns, system="BaTiO"):
             "2theta_max": 24.853167100343246,
             "n_datapoints": 3488,
         }
-        kwargs = {"bkg_1": (-1e-4, 1e-4), "bkg_0": (0, 1e-3)}
+        kwargs = {
+            "bkg_1": (-1e-4, 1e-4),
+            "bkg_0": (0, 1e-3),
+            "sample_height": (-0.2, 0.2),
+        }
         cif_paths = list((Path(__file__).parent / "cifs-BaTiO/").glob("*.cif"))
         march_range = (0.8, 1.0)
-        sample_height = (-2.0, 2.0)
         shape_limit = 1e-1
         reflections = log_reflections(
             cif_paths, param_dict["2theta_min"], param_dict["2theta_max"], wavelength
@@ -65,9 +68,12 @@ def pattern_simulation(n_patterns, system="BaTiO"):
             "2theta_max": 39.99347292,
             "n_datapoints": 2894,
         }
-        kwargs = {"bkg_-1": (0.0, 0.5), "bkg_-2": (0.0, 1.0)}
+        kwargs = {
+            "bkg_-1": (0.0, 0.5),
+            "bkg_-2": (0.0, 1.0),
+            "sample_height": (-2.0, 2.0),
+        }
         march_range = (0.05, 1)
-        sample_height = (-2, 2)
         shape_limit = 0.05
         cif_paths = list((Path(__file__).parent / "cifs-ADTA/").glob("*.cif"))
         reflections = log_reflections(
@@ -83,9 +89,8 @@ def pattern_simulation(n_patterns, system="BaTiO"):
             "2theta_max": 89.93999843671914,
             "n_datapoints": 3498,
         }
-        kwargs = {"bkg_0": (0.0, 0.05)}
+        kwargs = {"bkg_0": (0.0, 0.05), "sample_height": (-2.0, 2.0)}
         march_range = (0.05, 1)
-        sample_height = (-2.0, 2.0)
         shape_limit = 0.05
         cif_paths = list((Path(__file__).parent / "cifs-NiCoAl/").glob("*.cif"))
         reflections = log_reflections(
@@ -113,9 +118,7 @@ def pattern_simulation(n_patterns, system="BaTiO"):
             input_params=param_dict,
             march_range=march_range,
             shape_limit=shape_limit,
-            sample_height=sample_height,
             preferred_axes=reflections[phase],
-            start_idx=idx * n_patterns,
             **kwargs,
         )
     return d
