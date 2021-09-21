@@ -1,37 +1,24 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-import numpy as np
 import time
-import os
-import tensorflow as tf
-from tensorflow.keras.layers import (
-    BatchNormalization,
-    Dense,
-    Dropout,
-    Flatten,
-    Reshape,
-    Input,
-    LeakyReLU,
-    Conv1D,
-    Conv1DTranspose,
-    UpSampling1D,
-    AveragePooling1D,
-    Average,
-    Lambda,
-)
-from tensorflow.keras.initializers import RandomNormal
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import backend as K
-from .tf_data_proc import build_dataset
-from pathlib import Path
 from collections import defaultdict
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.python.keras import Input, Model
+from tensorflow.python.keras.layers import (
+    Dense,
+    Reshape,
+    Conv1DTranspose,
+    UpSampling1D,
+    Conv1D,
+    AveragePooling1D,
+    Flatten,
+    Dropout,
+    Lambda,
+)
 
-
-def set_seed(seed):
-    np.random.seed(seed)
-    tf.random.set_seed(seed)
+from xca.ml.tf.data_proc import build_dataset
+from xca.ml.tf.utils import setup_training, breakdown_training
 
 
 def calculate_transpose_output_size(input_size, kernel_size, stride):
@@ -47,7 +34,7 @@ def build_consistent_vae(
     encoder_kernel_sizes,
     encoder_pool_sizes,
     encoder_strides,
-    kl_loss_factor,
+    kl_loss_weight,
     verbose=False,
     **kwargs
 ):
@@ -75,7 +62,7 @@ def build_consistent_vae(
         number of strides in each convolutional layer of the encoder model. consistent with length of other input lists
     encoder_pool_sizes: list of int
         pool sizes for each convolutional layer of the encoder model. consistent with length of other input lists
-    kl_loss_factor: float
+    kl_loss_weight: float
         scaler for kl-divergence loss
     verbose: bool
         if True, displays model summaries for the encoder and decoder
@@ -155,7 +142,7 @@ def build_consistent_vae(
     if verbose:
         decoder.summary()
 
-    vae = VAE(encoder, decoder, kl_loss_factor)
+    vae = VAE(encoder, decoder, kl_loss_weight)
     return vae
 
 
@@ -256,7 +243,8 @@ def build_CNN_decoder_model(
     latent_dim: int
         number of variables defining the latent space
     last_conv_layer_shape: tuple of int
-        shape of the output from the last convolutional layer in the encoder; used to calculate dimensionality of the decoder's initial dense layer
+        shape of the output from the last convolutional layer in the encoder;
+        used to calculate dimensionality of the decoder's initial dense layer
     filters: list of int
         consistent length with other items, number of filters for each Conv1DTranspose layer
     kernel_sizes: list of int
@@ -406,7 +394,7 @@ class VAE(Model):
         )
         return reconstruction_loss
 
-    def loss(self, x, z_mean, z_log_sigma, reconstruction):
+    def loss(self, x, z_mean, z_log_sigma, reconstruction, *args):
         return self.kl_loss_weight * self.kl_loss(
             z_mean, z_log_sigma
         ) + self.reconstruction_loss(x, reconstruction)
@@ -441,7 +429,108 @@ class VAE(Model):
         return self.call(x, *args, **kwargs)
 
 
-def VAE_training(
+class PredictiveVAE(VAE):
+    def __init__(
+        self,
+        *,
+        encoder,
+        decoder,
+        predictor,
+        mode,
+        kl_loss_weight=1.0,
+        predictive_loss_weight=1.0,
+        **kwargs
+    ):
+        """
+        VAE with predictive module for classification or regression
+
+        Parameters
+        ----------
+        encoder: Model
+        decoder: Model
+        predictor: Model
+        mode: str
+            Operational mode, one of {"classification", "regression"}
+        kl_loss_weight: float
+        predictive_loss_weight: float
+        kwargs: dict
+        """
+        super(PredictiveVAE, self).__init__(
+            encoder, decoder, kl_loss_weight=kl_loss_weight, **kwargs
+        )
+        self.predictor = predictor
+        self.predictive_loss_weight = predictive_loss_weight
+        self.predictive_loss = {
+            "classification": tf.keras.losses.CategoricalCrossentropy(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+            "regression": tf.keras.losses.MeanSquaredError(
+                reduction=tf.keras.losses.Reduction.SUM
+            ),
+        }[mode.lower()]
+
+    def loss(self, *x, z_mean, z_log_sigma, reconstruction, y_true, y_pred):
+        return (
+            self.kl_loss_weight * self.kl_loss(z_mean, z_log_sigma)
+            + self.predictive_loss_weight * self.predictive_loss(y_true, y_pred)
+            + self.reconstruction_loss(x, reconstruction)
+        )
+
+    def call(self, x, *args, **kwargs):
+        z_mean, z_log_sigma = self.encode(x, *args, **kwargs)
+        z = Lambda(self.sample)([z_mean, z_log_sigma], *args, **kwargs)
+        y_pred = self.predictor(z)
+        reconstruction = self.decode(z, *args, **kwargs)
+        return {
+            "z_mean": z_mean,
+            "z_log_sigma": z_log_sigma,
+            "reconstruction": reconstruction,
+            "y_pred": y_pred,
+        }
+
+
+def _run_epoch(
+    *,
+    epoch,
+    train_step,
+    dataset,
+    results_dict,
+    checkpoint,
+    checkpoint_rate,
+    checkpoint_prefix,
+    verbose
+):
+    """
+    Convenience function for refactorization of running internal epoch for VAEs and like methods
+    Parameters
+    ----------
+    epoch
+    train_step
+    dataset
+    results_dict
+    checkpoint
+    checkpoint_rate
+    checkpoint_prefix
+    verbose
+
+    Returns
+    -------
+
+    """
+    start = time.time()
+    for batch in dataset:
+        loss, output = train_step(batch)
+        for key in loss:
+            results_dict[key][epoch] += loss[key]
+
+    # Save the model every set epochs
+    if (epoch + 1) % checkpoint_rate == 0:
+        checkpoint.save(file_prefix=checkpoint_prefix)
+    if verbose:
+        print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
+
+
+def training(
     model,
     *,
     dataset_paths,
@@ -485,18 +574,15 @@ def VAE_training(
 
     """
     # Setup
-    start_time = time.time()
-    set_seed(seed)
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-    if verbose:
-        model.build((None, *data_shape))
-        model.summary()
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
     dataset, _ = build_dataset(
@@ -534,32 +620,26 @@ def VAE_training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
-
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
-
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results
 
 
-def VAE_denoising_training(
+def denoiser_training(
     model,
     *,
     dataset_paths,
@@ -611,18 +691,15 @@ def VAE_denoising_training(
 
     """
     # Setup
-    start_time = time.time()
-    set_seed(seed)
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-    if verbose:
-        model.build((None, *data_shape))
-        model.summary()
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
     def preprocess(data, label):
@@ -675,137 +752,26 @@ def VAE_denoising_training(
         results["loss"].append(0.0)
         results["kl_loss"].append(0.0)
         results["reconstruction_loss"].append(0.0)
-        start = time.time()
-        for batch in dataset:
-            loss, output = train_step(batch)
-            for key in loss:
-                results[key][epoch] += loss[key]
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
-
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
-
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results
 
 
-def build_CNN_model(
-    *,
-    data_shape,
-    filters,
-    kernel_sizes,
-    strides,
-    ReLU_alpha,
-    pool_sizes,
-    batchnorm,
-    n_classes,
-    dense_dims=(),
-    dense_dropout=0.0,
-    **kwargs
-):
-    """
-    Builds single feed forward convolutional neural network for 1-d xrd data
-
-    Parameters
-    ----------
-    data_shape: tuple
-        shape of input data XRD pattern (should be 2-d)
-    filters: list of int
-        Consistent length with other items, number of filters for each Conv1D layer
-    kernel_sizes: list of int
-        Consistent length with other items, size of kernel for each Conv1D layer
-    strides: list of int
-        Consistent length with other items, size of stride for each Conv1D layer
-    ReLU_alpha: float
-        [0.0, 1.0) decay for ReLU function
-    pool_sizes: list of int
-        Consistent length with other items, size of pooling for each AveragePool layer
-    batchnorm: bool
-        Turn batch normalization on or off
-    n_classes: int
-        Number of classes for classification
-    dense_dims: list of int
-        Dimensions of dense layers to follow convolutional model
-    dense_dropout: float
-        Dropout rate for final layer and all dense layers
-    kwargs:
-        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
-
-    Returns
-    -------
-    model: Model
-
-    """
-    x_in = Input(shape=data_shape, name="X")
-    x = tf.identity(x_in)
-    # Downsampling
-    for i in range(len(filters)):
-        x = Conv1D(
-            filters[i],
-            kernel_sizes[i],
-            strides=strides[i],
-            padding="valid",
-            kernel_initializer=RandomNormal(0, 0.02),
-            name="conv_{}".format(i),
-        )(x)
-        x = LeakyReLU(alpha=ReLU_alpha)(x)
-        x = AveragePooling1D(pool_size=pool_sizes[i], strides=None, padding="same")(x)
-        if batchnorm:
-            x = BatchNormalization(axis=-1, name="batchnorm_{}".format(i))(x)
-
-    # Flatten and output
-    x = Flatten()(x)
-    x = Dropout(dense_dropout)(x)
-    for i, dim in enumerate(dense_dims):
-        x = Dense(dim, activation="relu", name="dense_{}".format(i))(x)
-        x = Dropout(dense_dropout)(x)
-    x = Dense(n_classes, activation="softmax", name="Discriminator")(x)
-
-    model = Model(x_in, x)
-    return model
-
-
-def build_fusion_ensemble_model(ensemble_size, model_builder, *, data_shape, **kwargs):
-    """
-    Build's a simple fusion ensemble that connects multiple models by an averaging layer.
-    The output of a fusion ensemble is the averaged output from all base estimators.
-
-    Parameters
-    ----------
-    ensemble_size: int
-        Size of the ensemble
-    model_builder: Callable
-    data_shape: tuple
-    kwargs: dict
-        Keyword arguments for model_builder
-
-    Returns
-    -------
-    model: Model
-        Ensemble model
-    """
-    x_in = Input(shape=data_shape, name="X")
-    members = []
-    for i in range(ensemble_size):
-        m = model_builder(data_shape=data_shape, **kwargs)
-        members.append(m(x_in))
-    outputs = Average()(members)
-    model = Model(x_in, outputs)
-    return model
-
-
-def model_training(  # noqa: C901
+def predictive_training(
     model,
     *,
     dataset_paths,
@@ -818,140 +784,79 @@ def model_training(  # noqa: C901
     optimizer=None,
     learning_rate=0.001,
     n_classes=0,
-    val_split=0.2,
     checkpoint_rate=1,
     verbose=False,
-    seed=None,
-    **kwargs
+    seed=None
 ):
-    """
-
-    Parameters
-    ----------
-    model: Model
-        Tensorflow model
-        Inputs:  'X'
-        Outputs: y_pred
-    dataset_paths: list of str, list of Path
-    out_dir: str, Path
-    batch_size: int
-    multiprocessing: int
-    categorical: bool
-    data_shape: tuple
-    n_epochs: int
-    n_classes: int
-    learning_rate: float
-        Learning rate if no optimizer is given
-    optimizer: Optimizer, None
-        Default to Adam with learning rate
-    val_split: float
-    checkpoint_rate: int
-    verbose: bool
-    seed: int
-    kwargs:
-        Dummy dict for using convenience methods that pass larger **kwargs to both model and training
-
-    Returns
-    -------
-
-    """
-    start_time = time.time()
-    set_seed(seed)
-
-    Path(out_dir).mkdir(exist_ok=True, parents=True)
-
-    if verbose:
-        model.summary()
-
-    if optimizer is None:
-        optimizer = Adam(learning_rate=learning_rate)
+    # Setup
+    start_time, checkpoint_prefix, checkpoint, optimizer = setup_training(
+        model=model,
+        seed=seed,
+        out_dir=out_dir,
+        optimizer=optimizer,
+        verbose=verbose,
+        data_shape=data_shape,
+        learning_rate=learning_rate,
+    )
 
     # Build dataset
-    dataset, val_dataset = build_dataset(
+    dataset, _ = build_dataset(
         dataset_paths=dataset_paths,
         batch_size=batch_size,
         multiprocessing=multiprocessing,
         categorical=categorical,
-        val_split=val_split,
+        val_split=0.0,
         data_shape=data_shape,
         n_classes=n_classes,
     )
 
-    if categorical:
-        loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
-    else:
-        loss_fn = tf.keras.losses.MeanSquaredError()
-
-    # Checkpoints
-    checkpoint_dir = str(Path(out_dir) / "training_checkpoints")
-    checkpoint_prefix = str(Path(checkpoint_dir) / "ckpt")
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-
     @tf.function
     def train_step(batch):
         with tf.GradientTape() as tape:
-            y_pred = model({"X": batch["X"]}, training=True)
-            loss = loss_fn(batch["label"], y_pred)
+            output = model(batch["X"], training=True)
+            reconstruction_loss = model.reconstruction_loss(
+                batch["X"], output["reconstruction"]
+            )
+            kl_loss = model.kl_loss(output["z_mean"], output["z_log_sigma"])
+            predictive_loss = model.predictive_loss(batch["label"], output["y_pred"])
+            loss = (
+                reconstruction_loss
+                + model.kl_loss_weight * kl_loss
+                + model.predictive_loss_weight * predictive_loss
+            )
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-        return loss, y_pred
-
-    @tf.function
-    def val_step(batch):
-        y_pred = model({"X": batch["X"]}, training=False)
-        loss = loss_fn(batch["label"], y_pred)
-        return loss, y_pred
+        return (
+            dict(
+                reconstruction_loss=reconstruction_loss,
+                kl_loss=kl_loss,
+                predictive_loss=predictive_loss,
+                loss=loss,
+            ),
+            output,
+        )
 
     # Actual training
     results = defaultdict(list)
     for epoch in range(n_epochs):
-        if categorical:
-            train_metrics = {"train_acc": tf.keras.metrics.CategoricalAccuracy()}
-            val_metrics = {"val_acc": tf.keras.metrics.CategoricalAccuracy()}
-        else:
-            train_metrics = {"train_loss": tf.keras.metrics.MeanSquaredError()}
-            val_metrics = {"val_loss": tf.keras.metrics.MeanSquaredError()}
+        results["loss"].append(0.0)
+        results["kl_loss"].append(0.0)
+        results["reconstruction_loss"].append(0.0)
+        results["predictive_loss"].append(0.0)
+        _run_epoch(
+            epoch=epoch,
+            train_step=train_step,
+            dataset=dataset,
+            results_dict=results,
+            checkpoint=checkpoint,
+            checkpoint_rate=checkpoint_rate,
+            checkpoint_prefix=checkpoint_prefix,
+            verbose=verbose,
+        )
 
-        start = time.time()
-        results["train_loss"].append(0.0)
-        count = 0
-        for batch in dataset:
-            count += len(batch)
-            loss, y_pred = train_step(batch)
-            results["train_loss"][epoch] += loss.numpy()
-            for _, metric in train_metrics.items():
-                metric(batch["label"], y_pred)
-        results["train_loss"][epoch] /= count
-
-        # Validation and results update
-        results["val_loss"].append(0.0)
-        count = 0
-        for batch in val_dataset:
-            count += len(batch)
-            loss, val_pred = val_step(batch)
-            results["val_loss"][epoch] += loss.numpy()
-            for _, metric in val_metrics.items():
-                metric(batch["label"], val_pred)
-        results["val_loss"][epoch] /= count
-
-        for key, metric in train_metrics.items():
-            results[key].append(metric.result().numpy())
-        for key, metric in val_metrics.items():
-            results[key].append(metric.result().numpy())
-
-        # Save the model every set epochs
-        if (epoch + 1) % checkpoint_rate == 0:
-            checkpoint.save(file_prefix=checkpoint_prefix)
-        if verbose:
-            print("Time for epoch {} is {} sec".format(epoch + 1, time.time() - start))
-    if verbose:
-        print()
-        print("Time for full training is {} sec".format(time.time() - start_time))
-
-    for key in results:
-        with open(Path(out_dir) / (key + ".txt"), "w") as f:
-            for result in results[key]:
-                f.write(str(result))
-                f.write("\n")
+    # Closeout and save
+    breakdown_training(
+        verbose=verbose, start_time=start_time, results=results, out_dir=out_dir
+    )
 
     return results

@@ -1,10 +1,6 @@
-from xca.ml.tf_data_proc import np_dir_to_record
-from xca.ml.tf_models import (
-    model_training,
-    build_fusion_ensemble_model,
-    build_CNN_model,
-)
-from xca.ml.tf_parameters import load_hyperparameters
+from xca.ml.tf.data_proc import np_dir_to_record
+from xca.ml.tf.cnn import build_CNN_model, build_fusion_ensemble_model, training
+from xca.ml.tf.utils import load_hyperparameters
 import argparse
 
 
@@ -19,5 +15,5 @@ if __name__ == "__main__":
     model = build_fusion_ensemble_model(
         params["ensemble_size"], model_builder=build_CNN_model, **params
     )
-    res = model_training(model, **params)
+    res = training(model, **params)
     print(res)
