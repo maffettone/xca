@@ -1,5 +1,6 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+from pytorch_lightning import LightningDataModule
 from xca.data_synthesis.builder import single_pattern
 from xca.data_synthesis.cctbx import load_cif, calc_structure_factor, convert_to_numpy
 from pathlib import Path
@@ -101,3 +102,22 @@ class DynamicTrainingDataset(Dataset):
             _param_dict, shape_limit=self.shape_limit, **self.synth_kwargs
         )
         return torch.tensor(da.data), self.target_transform(da.attrs[self.target])
+
+
+class DynamicDataModule(LightningDataModule):
+    def __init__(self, batch_size: int = 32, num_workers: int = 32, **kwargs):
+        super().__init__()
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.train = DynamicTrainingDataset(**kwargs)
+        self.val = DynamicTrainingDataset(**kwargs)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train, batch_size=self.batch_size, num_workers=self.num_workers
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val, batch_size=self.batch_size, num_workers=self.num_workers
+        )
