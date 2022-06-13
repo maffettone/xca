@@ -92,3 +92,33 @@ class RegressionTrainer(Trainer):
     def __init__(self):
         super().__init__()
         raise NotImplementedError
+
+
+def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
+    """
+    Dynamic training utility function. See documentation for
+    xca.data_synthesis.dynamic for explanation of kwargs
+
+    Parameters
+    ----------
+    pl_module : Module
+        Pytorch Lightning module for training
+    max_epochs : int
+        Maximum number of epochs to continue training. Must be greater than 0.
+    gpus : Optional[List]
+    kwargs
+
+    Returns
+    -------
+
+    """
+    from pytorch_lightning.loggers import WandbLogger
+    from xca.data_synthesis.dynamic import DynamicDataModule
+
+    if gpus is None:
+        gpus = [0] if torch.cuda.is_available() else None
+    wandb_logger = WandbLogger()
+    trainer = pl.Trainer(gpus=gpus, max_epochs=max_epochs, logger=wandb_logger)
+    pl_data_module = DynamicDataModule(**kwargs)
+    trainer.fit(pl_module, pl_data_module)
+    return trainer.logged_metrics
