@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from typing import Sequence
 from xca.ml.torch import Expression
@@ -66,8 +67,19 @@ class GenericCNNModel(nn.Module):
         layers += [nn.Linear(dense_dims[-1], n_classes)]
 
         self.net = nn.Sequential(*layers)
+        self.n_classes = n_classes
 
     def forward(self, x):
-        if self.out_dim == 1:
+        if self.n_classes == 1:
             return self.net(x)[..., 0]
         return self.net(x)
+
+
+class EnsembleCNN(nn.Module):
+    def __init__(self, ensemble_size: int, *args, **kwargs):
+        super().__init__()
+        self.sub_nets = [GenericCNNModel(*args, **kwargs) for _ in range(ensemble_size)]
+
+    def forward(self, x):
+        ys = [net(x) for net in self.sub_nets]
+        return torch.stack(ys).mean(dim=0)
