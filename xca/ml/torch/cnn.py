@@ -16,11 +16,10 @@ class ConvSubUnit(nn.Module):
                 in_channels,
                 out_channels,
                 kernel_size=kernel_size,
-                padding="valid",
                 stride=stride,
             ),
             nn.LeakyReLU(negative_slope=alpha),
-            nn.AvgPool1d(pool_size, padding="same"),
+            nn.AvgPool1d(pool_size),
             nn.BatchNorm1d(out_channels),
         )
 
@@ -78,7 +77,9 @@ class GenericCNNModel(nn.Module):
 class EnsembleCNN(nn.Module):
     def __init__(self, ensemble_size: int, *args, **kwargs):
         super().__init__()
-        self.sub_nets = [GenericCNNModel(*args, **kwargs) for _ in range(ensemble_size)]
+        self.sub_nets = nn.ModuleList(
+            [GenericCNNModel(*args, **kwargs) for _ in range(ensemble_size)]
+        )
 
     def forward(self, x):
         ys = [net(x) for net in self.sub_nets]

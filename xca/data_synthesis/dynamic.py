@@ -83,7 +83,7 @@ class DynamicTrainingDataset(Dataset):
             self.target_transform = self._default_transform
 
     def _default_class_transform(self, y):
-        return torch.tensor(self.phase_dict[y], dtype=torch.int)
+        return torch.tensor(self.phase_dict[y], dtype=torch.long)
 
     @staticmethod
     def _default_transform(y):
@@ -101,7 +101,9 @@ class DynamicTrainingDataset(Dataset):
         da = single_pattern(
             _param_dict, shape_limit=self.shape_limit, **self.synth_kwargs
         )
-        return torch.tensor(da.data), self.target_transform(da.attrs[self.target])
+        return torch.tensor(
+            da.data[None, ...], dtype=torch.float
+        ), self.target_transform(da.attrs[self.target])
 
 
 class DynamicDataModule(LightningDataModule):

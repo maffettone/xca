@@ -106,7 +106,8 @@ def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
     max_epochs : int
         Maximum number of epochs to continue training. Must be greater than 0.
     gpus : Optional[List]
-    kwargs
+    kwargs :
+        Keyword arguments to be passed into DynamicDataModule
 
     Returns
     -------
