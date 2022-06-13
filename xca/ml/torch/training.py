@@ -88,6 +88,19 @@ class ClassificationTrainer(Trainer):
         return loss
 
 
+class VAETrainer(Trainer):
+    raise NotImplementedError
+
+
+class JointVAEClassifierTrainer(Trainer):
+    """This should have 2 models that are independent until the loss sum.
+    The optimizers will need specific parameter access.
+    Useful for case where 2 models are being trained on the same data access, and data access is costly.
+    """
+
+    raise NotImplementedError
+
+
 class RegressionTrainer(Trainer):
     def __init__(self):
         super().__init__()
