@@ -143,8 +143,12 @@ class DynamicDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-        self.train = DynamicTrainingDataset(epoch_len=batch_per_train_epoch, **kwargs)
-        self.val = DynamicTrainingDataset(epoch_len=batch_per_val_epoch, **kwargs)
+        self.train = DynamicTrainingDataset(
+            epoch_len=batch_per_train_epoch * batch_size, **kwargs
+        )
+        self.val = DynamicTrainingDataset(
+            epoch_len=batch_per_val_epoch * batch_size, **kwargs
+        )
 
     def train_dataloader(self):
         return DataLoader(
