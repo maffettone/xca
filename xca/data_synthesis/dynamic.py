@@ -43,22 +43,25 @@ class DynamicTrainingDataset(Dataset):
         shape_limit: float,
         target: Optional[str] = None,
         target_transform: Optional[Callable] = None,
+        epoch_len: Optional[int] = None,
         **kwargs
     ):
         """
 
         Parameters
         ----------
-        cif_paths: list[Path]
-        param_dict: dict
+        cif_paths : list[Path]
+        param_dict : dict
             Dictionary of parameters for cctbx wrappers
-        shape_limit: float
+        shape_limit : float
             Limit on shape modulation
-        target: Optional[str]
+        target : Optional[str]
             String target for prediction. Defaults to a classification of the phases by path stem
-        target_transform: Optional[Callable]
+        target_transform : Optional[Callable]
             Callable that returns the appropriate tensor from the da.attrs[target]. This could for e.g.
             include normalization or dtype enforcement.
+        epoch_len : Optional[int]
+            Number of samples per epoch. If none given, it defaults to 10 times the number of cif paths.
         kwargs
         """
         self.param_dict = param_dict
@@ -78,9 +81,13 @@ class DynamicTrainingDataset(Dataset):
             if target_transform is None:
                 self.phase_dict = {phase: i for i, phase in enumerate(self.phases)}
                 self.target_transform = self._default_class_transform
-
         elif target_transform is None:
             self.target_transform = self._default_transform
+
+        if epoch_len is None:
+            self.epoch_len = 10 * len(self.phases)
+        else:
+            self.epoch_len = epoch_len
 
     def _default_class_transform(self, y):
         return torch.tensor(self.phase_dict[y], dtype=torch.long)
@@ -90,7 +97,7 @@ class DynamicTrainingDataset(Dataset):
         return torch.tensor(y)
 
     def __len__(self):
-        return torch.iinfo(torch.int64).max
+        return self.epoch_len
 
     def __getitem__(self, idx):
         idx = idx % self.n_phases
@@ -101,18 +108,43 @@ class DynamicTrainingDataset(Dataset):
         da = single_pattern(
             _param_dict, shape_limit=self.shape_limit, **self.synth_kwargs
         )
-        return torch.tensor(
-            da.data[None, ...], dtype=torch.float
-        ), self.target_transform(da.attrs[self.target])
+        return (
+            torch.tensor(da.data[None, ...], dtype=torch.float),
+            self.target_transform(da.attrs[self.target]),
+        )
 
 
 class DynamicDataModule(LightningDataModule):
-    def __init__(self, batch_size: int = 32, num_workers: int = 32, **kwargs):
+    def __init__(
+        self,
+        batch_size: int = 32,
+        num_workers: int = 32,
+        batch_per_train_epoch: int = 100,
+        batch_per_val_epoch: int = 10,
+        **kwargs
+    ):
+        """
+        Lightning data module to manage dynamic dataset generation
+
+        Parameters
+        ----------
+        batch_size : int
+        num_workers : int
+        batch_per_train_epoch : int
+            Since epoch length is arbitrary since the dataset is constantly growing, a factor of batch
+            size is used to determine the artificial length of an epoch.
+        batch_per_val_epoch : int
+            Since epoch length is arbitrary since the dataset is constantly growing, a factor of batch
+            size is used to determine the artificial length of an epoch.
+        kwargs
+            keyword arguments passed to DynamicTrainDataset initialization
+        """
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.train = DynamicTrainingDataset(**kwargs)
-        self.val = DynamicTrainingDataset(**kwargs)
+
+        self.train = DynamicTrainingDataset(epoch_len=batch_per_train_epoch, **kwargs)
+        self.val = DynamicTrainingDataset(epoch_len=batch_per_val_epoch, **kwargs)
 
     def train_dataloader(self):
         return DataLoader(
