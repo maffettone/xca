@@ -20,13 +20,15 @@ def training():
         "sample_height": (-0.2, 0.2),
         "march_range": (0.8, 1.0),
     }
-    cif_paths = list((Path(__file__).parent / "cifs-BaTiO/").glob("*.cif"))
+    cif_paths = list(
+        (Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO/").glob("*.cif")
+    )
     shape_limit = 1e-1
     # END XRD PARAMETERS #
 
     #  Construct CNN model
     model = EnsembleCNN(
-        ensemble_size=10,
+        ensemble_size=100,
         filters=[8, 8, 4],
         kernel_sizes=[5, 5, 5],
         strides=[2, 2, 2],
@@ -42,7 +44,8 @@ def training():
         pl_module,
         max_epochs=5,
         batch_size=4,
-        num_workers=4,
+        num_workers=32,
+        prefetch_factor=8,
         cif_paths=cif_paths,
         param_dict=param_dict,
         shape_limit=shape_limit,
