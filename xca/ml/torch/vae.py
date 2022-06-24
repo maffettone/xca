@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 import math
 from typing import Sequence, Tuple, Optional
 
@@ -37,7 +38,7 @@ class ConvTransposeBlock(nn.Module):
                 output_padding=output_padding,
             ),
             nn.ReLU(),
-            nn.BatchNorm1d(in_channels),
+            nn.BatchNorm1d(out_channels),
         )
 
     def forward(self, x):
@@ -91,7 +92,7 @@ class CNNEncoder(nn.Module):
             layers.append(nn.Dropout(dropout))
 
         layers.append(nn.Flatten())
-        layers.append(nn.Linear(current_length * channels[-1], self.latent_dim))
+        layers.append(nn.Linear(current_length * channels[-1], self.latent_dim * 2))
         layers.append(nn.Dropout(dropout))
 
         self.net = nn.Sequential(*layers)
@@ -100,7 +101,10 @@ class CNNEncoder(nn.Module):
 
     def forward(self, x):
         """Remove flattening of single dim"""
-        return self.net(x)
+        x = self.net(x).view(-1, self.latent_dim, 2)
+        mu = x[..., 0]
+        log_var = x[..., 1]
+        return mu, log_var
 
     @property
     def last_convolutional_shape(self):
@@ -244,9 +248,21 @@ class CNNDecoder(nn.Module):
         return self.net(x)
 
 
-class ConvVAE(nn.Module):
-    def __init__(self):
-        pass
+class VAE(nn.Module):
+    def __init__(self, encoder, decoder):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.latent_dim = encoder.latent_dim
+
+    @staticmethod
+    def sample_posterior(mu, log_var):
+        return mu + torch.randn_like(mu) * torch.exp(0.5 * log_var)
+
+    def forward(self, x):
+        mu, log_var = self.encoder(x)
+        z = self.sample_posterior(mu, log_var)
+        return self.decoder(z), mu, log_var
 
 
 if __name__ == "__main__":
