@@ -263,7 +263,3 @@ class VAE(nn.Module):
         mu, log_var = self.encoder(x)
         z = self.sample_posterior(mu, log_var)
         return self.decoder(z), mu, log_var
-
-
-if __name__ == "__main__":
-    pass
