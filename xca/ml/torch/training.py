@@ -89,7 +89,78 @@ class ClassificationTrainer(Trainer):
 
 
 class VAETrainer(Trainer):
-    raise NotImplementedError
+    from xca.ml.torch.vae import VAE
+
+    def __init__(self, vae: VAE, *, lr=1e-3, kl_weight=1.0):
+        super().__init__()
+        self.model = vae
+        self.encoder = vae.encoder
+        self.decoder = vae.decoder
+        self.learning_rate = lr
+        self.reconstruction_loss = nn.MSELoss()
+        self.kl_weight = kl_weight
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+
+    def forward(self, x):
+        return self.model(x)
+
+    @staticmethod
+    def kl_loss(mu, log_var):
+        """Computes the KL-divergence loss with a batchwise mean as a reduction"""
+        return -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), dim=1).mean(
+            dim=0
+        )
+
+    def _step(self, batch):
+        # Takes the first tensor off a list/tuple batch. I.e. removes target and other auxilary info.
+        if isinstance(batch, torch.Tensor):
+            x = batch
+        else:
+            x, *_ = batch
+        recon, mu, log_var = self.model(x)
+        kl_loss = self.kl_loss(mu, log_var)
+        recon_loss = self.reconstruction_loss(x, recon)
+        loss = recon_loss + self.kl_weight * kl_loss
+        return recon, loss, recon_loss, kl_loss
+
+    def training_step(self, batch, batch_index):
+        recon, total_loss, recon_loss, kl_loss = self._step(batch)
+        # Not using torch metrics and only logging losses
+        for loss, key in zip(
+            (total_loss, recon_loss, kl_loss),
+            ("loss", "reconstruction_loss", "kl_divergence"),
+        ):
+            self.log(f"train_{key}", float(loss), on_step=True, on_epoch=True)
+        return total_loss
+
+    def validation_step(self, val_batch, batch_index):
+        recon, total_loss, recon_loss, kl_loss = self._step(val_batch)
+        for loss, key in zip(
+            (total_loss, recon_loss, kl_loss),
+            ("loss", "reconstruction_loss", "kl_divergence"),
+        ):
+            self.log(f"val_{key}", float(loss), on_step=True, on_epoch=True)
+        return total_loss
+
+    def test_step(self, test_batch, batch_index):
+        recon, total_loss, recon_loss, kl_loss = self._step(test_batch)
+        for loss, key in zip(
+            (total_loss, recon_loss, kl_loss),
+            ("loss", "reconstruction_loss", "kl_divergence"),
+        ):
+            self.log(f"test_{key}", float(loss), on_step=True, on_epoch=True)
+        return total_loss
+
+    def predict_step(self, batch, batch_idx):
+        recon, total_loss, recon_loss, kl_loss = self._step(batch)
+        return dict(
+            predicted_reconstruction=recon,
+            total_loss=total_loss,
+            reconstruction_loss=recon_loss,
+            kl_divergence=kl_loss,
+        )
 
 
 class JointVAEClassifierTrainer(Trainer):
@@ -98,7 +169,8 @@ class JointVAEClassifierTrainer(Trainer):
     Useful for case where 2 models are being trained on the same data access, and data access is costly.
     """
 
-    raise NotImplementedError
+    def __init__(self):
+        raise NotImplementedError
 
 
 class RegressionTrainer(Trainer):
@@ -131,7 +203,7 @@ def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
 
     if gpus is None:
         gpus = [0] if torch.cuda.is_available() else None
-    wandb_logger = WandbLogger()
+    wandb_logger = WandbLogger(project="XCA")
     trainer = pl.Trainer(gpus=gpus, max_epochs=max_epochs, logger=wandb_logger)
     pl_data_module = DynamicDataModule(**kwargs)
     trainer.fit(pl_module, pl_data_module)
