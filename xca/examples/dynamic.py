@@ -1,6 +1,12 @@
 from pathlib import Path
-from xca.ml.torch.training import dynamic_training, ClassificationModule
+from xca.ml.torch.training import (
+    dynamic_training,
+    ClassificationModule,
+    VAEModule,
+    JointVAEClassifierModule,
+)
 from xca.ml.torch.cnn import EnsembleCNN
+from xca.ml.torch.vae import CNNDecoder, CNNEncoder, VAE
 
 # BEGIN XRD PARAMETERS #
 param_dict = {
@@ -55,9 +61,6 @@ def training():
 
 
 def vae_main():
-    from xca.ml.torch.vae import CNNDecoder, CNNEncoder, VAE
-    from xca.ml.torch.training import dynamic_training, VAEModule
-
     encoder = CNNEncoder(
         input_length=3488,
         latent_dim=2,
@@ -69,10 +72,10 @@ def vae_main():
     decoder = CNNDecoder.from_encoder(encoder)
 
     vae = VAE(encoder, decoder)
-    trainer = VAEModule(vae, kl_weight=0.5)
+    pl_module = VAEModule(vae, kl_weight=0.5)
 
     metrics = dynamic_training(
-        trainer,
+        pl_module,
         2,
         batch_size=4,
         num_workers=4,
@@ -84,6 +87,47 @@ def vae_main():
         **kwargs,
     )
     return metrics
+
+
+def joint_vae_class_main():
+    cnn = EnsembleCNN(
+        ensemble_size=10,
+        filters=[8, 8, 4],
+        kernel_sizes=[5, 5, 5],
+        strides=[2, 2, 2],
+        pool_sizes=[1, 1, 1],
+        n_classes=4,
+        ReLU_alpha=0.2,
+        dense_dropout=0.4,
+    )
+    encoder = CNNEncoder(
+        input_length=3488,
+        latent_dim=2,
+        filters=(8, 4),
+        kernel_sizes=(5, 5),
+        strides=(2, 1),
+        pool_sizes=(2, 2),
+    )
+    decoder = CNNDecoder.from_encoder(encoder)
+
+    vae = VAE(encoder, decoder)
+    pl_module = JointVAEClassifierModule(
+        cnn, vae, classification_lr=1e-3, vae_lr=3e-4, kl_weight=1e-2
+    )
+
+    metrics = dynamic_training(
+        pl_module,
+        max_epochs=3,
+        batch_size=8,
+        num_workers=8,
+        batch_per_train_epoch=10,
+        batch_per_val_epoch=1,
+        cif_paths=cif_paths,
+        param_dict=param_dict,
+        shape_limit=shape_limit,
+        **kwargs,
+    )
+    return pl_module, metrics
 
 
 if __name__ == "__main__":

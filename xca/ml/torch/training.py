@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torchmetrics import Accuracy
 from abc import ABC
+from xca.ml.torch.vae import VAE
 
 
 class BaseModule(pl.LightningModule, ABC):
@@ -89,8 +90,6 @@ class ClassificationModule(BaseModule):
 
 
 class VAEModule(BaseModule):
-    from xca.ml.torch.vae import VAE
-
     def __init__(self, vae: VAE, *, lr=1e-3, kl_weight=1.0):
         super().__init__()
         self.model = vae
@@ -169,8 +168,101 @@ class JointVAEClassifierModule(BaseModule):
     Useful for case where 2 models are being trained on the same data access, and data access is costly.
     """
 
-    def __init__(self):
-        raise NotImplementedError
+    def __init__(
+        self,
+        classification_model,
+        vae_model: VAE,
+        *,
+        classification_lr=1e-3,
+        vae_lr=1e-3,
+        kl_weight=1.0,
+    ):
+        super().__init__()
+        self.classifier = classification_model
+        self.vae = vae_model
+        self.encoder = vae_model.encoder
+        self.decoder = vae_model.decoder
+        self.classification_criterion = nn.CrossEntropyLoss()
+        self.classification_lr = classification_lr
+        self.vae_lr = vae_lr
+        self.reconstruction_loss = nn.MSELoss()
+        self.kl_weight = kl_weight
+
+        # Metrics are being used strictly for classification
+        self.per_epoch_metrics = nn.ModuleDict(
+            dict(
+                train_accuracy=Accuracy(),
+                val_accuracy=Accuracy(),
+                test_accuracy=Accuracy(),
+            )
+        )
+
+    def configure_optimizers(self):
+        return [
+            torch.optim.Adam(self.classifier.parameters(), lr=self.classification_lr),
+            torch.optim.Adam(self.vae.parameters(), lr=self.vae_lr),
+        ]
+
+    def forward(self, x):
+        mu, var = self.encoder(x)
+        return dict(y_pred=self.classifier(x), x_recon=self.vae(x), mu=mu, var=var)
+
+    @staticmethod
+    def kl_loss(mu, log_var):
+        """Computes the KL-divergence loss with a batchwise mean as a reduction"""
+        return -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), dim=1).mean(
+            dim=0
+        )
+
+    def _vae_step(self, x, *, prefix):
+        recon, mu, log_var = self.vae(x)
+        kl_loss = self.kl_loss(mu, log_var)
+        recon_loss = self.reconstruction_loss(x, recon)
+        vae_loss = recon_loss + self.kl_weight * kl_loss
+        for loss, key in zip(
+            (vae_loss, recon_loss, kl_loss),
+            ("vae_loss", "reconstruction_loss", "kl_divergence"),
+        ):
+            self.log(f"{prefix}_{key}", float(loss), on_step=True, on_epoch=True)
+        return vae_loss
+
+    def _classification_step(self, x, y, *, prefix):
+        y_pred = self.classifier(x)
+        classification_loss = self.classification_criterion(y_pred, y)
+        self.log(
+            f"{prefix}_classification_loss",
+            float(classification_loss),
+            on_step=True,
+            on_epoch=True,
+        )
+        return y_pred, classification_loss
+
+    def training_step(self, batch, batch_index, optimizer_idx):
+        x, target_class = batch
+        if optimizer_idx == 0:
+            y_pred, loss = self._classification_step(x, target_class, prefix="train")
+            self._log_metrics(prefix="train", y=target_class, y_pred=y_pred)
+        if optimizer_idx == 1:
+            loss = self._vae_step(x, prefix="train")
+        return loss
+
+    def validation_step(self, val_batch, batch_index):
+        x, target_class = val_batch
+        y_pred, classification_loss = self._classification_step(
+            x, target_class, prefix="val"
+        )
+        self._log_metrics(prefix="val", y=target_class, y_pred=y_pred)
+        vae_loss = self._vae_step(x, prefix="val")
+        return classification_loss + vae_loss
+
+    def test_step(self, test_batch, batch_index):
+        x, target_class = test_batch
+        y_pred, classification_loss = self._classification_step(
+            x, target_class, prefix="test"
+        )
+        self._log_metrics(prefix="test", y=target_class, y_pred=y_pred)
+        vae_loss = self._vae_step(x, prefix="test")
+        return classification_loss + vae_loss
 
 
 class RegressionTrainer(BaseModule):
