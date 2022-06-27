@@ -1,5 +1,5 @@
 from pathlib import Path
-from xca.ml.torch.training import dynamic_training, ClassificationTrainer
+from xca.ml.torch.training import dynamic_training, ClassificationModule
 from xca.ml.torch.cnn import EnsembleCNN
 
 # BEGIN XRD PARAMETERS #
@@ -39,7 +39,7 @@ def training():
     )
 
     # Use helper dynamic_training function, passing kwargs for Dataset
-    pl_module = ClassificationTrainer(model, lr=2e-4)
+    pl_module = ClassificationModule(model, lr=2e-4)
     metrics = dynamic_training(
         pl_module,
         max_epochs=5,
@@ -56,7 +56,7 @@ def training():
 
 def vae_main():
     from xca.ml.torch.vae import CNNDecoder, CNNEncoder, VAE
-    from xca.ml.torch.training import dynamic_training, VAETrainer
+    from xca.ml.torch.training import dynamic_training, VAEModule
 
     encoder = CNNEncoder(
         input_length=3488,
@@ -69,7 +69,7 @@ def vae_main():
     decoder = CNNDecoder.from_encoder(encoder)
 
     vae = VAE(encoder, decoder)
-    trainer = VAETrainer(vae, kl_weight=0.5)
+    trainer = VAEModule(vae, kl_weight=0.5)
 
     metrics = dynamic_training(
         trainer,

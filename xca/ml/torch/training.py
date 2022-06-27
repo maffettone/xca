@@ -5,7 +5,7 @@ from torchmetrics import Accuracy
 from abc import ABC
 
 
-class Trainer(pl.LightningModule, ABC):
+class BaseModule(pl.LightningModule, ABC):
     def __init__(self):
         super().__init__()
         self.per_batch_metrics = nn.ModuleDict({})
@@ -32,7 +32,7 @@ class Trainer(pl.LightningModule, ABC):
                 self.log(key, metric(y_pred, y), on_step=False, on_epoch=True)
 
 
-class ClassificationTrainer(Trainer):
+class ClassificationModule(BaseModule):
     def __init__(self, model, *, lr=1e-3):
         """
         Multiclass classification trainer
@@ -88,7 +88,7 @@ class ClassificationTrainer(Trainer):
         return loss
 
 
-class VAETrainer(Trainer):
+class VAEModule(BaseModule):
     from xca.ml.torch.vae import VAE
 
     def __init__(self, vae: VAE, *, lr=1e-3, kl_weight=1.0):
@@ -163,7 +163,7 @@ class VAETrainer(Trainer):
         )
 
 
-class JointVAEClassifierTrainer(Trainer):
+class JointVAEClassifierModule(BaseModule):
     """This should have 2 models that are independent until the loss sum.
     The optimizers will need specific parameter access.
     Useful for case where 2 models are being trained on the same data access, and data access is costly.
@@ -173,7 +173,7 @@ class JointVAEClassifierTrainer(Trainer):
         raise NotImplementedError
 
 
-class RegressionTrainer(Trainer):
+class RegressionTrainer(BaseModule):
     def __init__(self):
         super().__init__()
         raise NotImplementedError
