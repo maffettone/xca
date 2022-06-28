@@ -188,6 +188,14 @@ class JointVAEClassifierModule(BaseModule):
         self.reconstruction_loss = nn.MSELoss()
         self.kl_weight = kl_weight
 
+        self.hparams.update(
+            {
+                "encoder_hparams": self.encoder.hparams,
+                "decoder_hparams": self.decoder.hparams,
+                "classifier_hparams": self.classifier.hparams,
+            }
+        )
+
         # Metrics are being used strictly for classification
         self.per_epoch_metrics = nn.ModuleDict(
             dict(
@@ -196,6 +204,8 @@ class JointVAEClassifierModule(BaseModule):
                 test_accuracy=Accuracy(),
             )
         )
+
+        self.save_hyperparameters(ignore=["classification_model", "vae_model"])
 
     def configure_optimizers(self):
         return [
@@ -223,7 +233,7 @@ class JointVAEClassifierModule(BaseModule):
             (vae_loss, recon_loss, kl_loss),
             ("vae_loss", "reconstruction_loss", "kl_divergence"),
         ):
-            self.log(f"{prefix}_{key}", float(loss), on_step=True, on_epoch=True)
+            self.log(f"{prefix}_{key}", float(loss), on_step=False, on_epoch=True)
         return vae_loss
 
     def _classification_step(self, x, y, *, prefix):
@@ -232,7 +242,7 @@ class JointVAEClassifierModule(BaseModule):
         self.log(
             f"{prefix}_classification_loss",
             float(classification_loss),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
         )
         return y_pred, classification_loss
@@ -271,7 +281,9 @@ class RegressionTrainer(BaseModule):
         raise NotImplementedError
 
 
-def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
+def dynamic_training(
+    pl_module, max_epochs, gpus=None, metric_monitor="val_accuracy", **kwargs
+):
     """
     Dynamic training utility function. See documentation for
     xca.data_synthesis.dynamic for explanation of kwargs
@@ -283,6 +295,8 @@ def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
     max_epochs : int
         Maximum number of epochs to continue training. Must be greater than 0.
     gpus : Optional[List]
+    metric_monitor : str
+        Metric to monitor for callbacks
     kwargs :
         Keyword arguments to be passed into DynamicDataModule
 
@@ -292,11 +306,22 @@ def dynamic_training(pl_module, max_epochs, gpus=None, **kwargs):
     """
     from pytorch_lightning.loggers import WandbLogger
     from xca.data_synthesis.dynamic import DynamicDataModule
+    from pytorch_lightning.callbacks import ModelCheckpoint
 
     if gpus is None:
         gpus = [0] if torch.cuda.is_available() else None
-    wandb_logger = WandbLogger(project="XCA")
-    trainer = pl.Trainer(gpus=gpus, max_epochs=max_epochs, logger=wandb_logger)
+    wandb_logger = WandbLogger(project="XCA", log_model="all")
+    checkpoint_callback = ModelCheckpoint(
+        monitor=metric_monitor,
+        mode="min" if "loss" in metric_monitor else "max",
+        save_last=True,
+    )
+    trainer = pl.Trainer(
+        gpus=gpus,
+        max_epochs=max_epochs,
+        logger=wandb_logger,
+        callbacks=[checkpoint_callback],
+    )
     pl_data_module = DynamicDataModule(**kwargs)
     trainer.fit(pl_module, pl_data_module)
     return trainer.logged_metrics

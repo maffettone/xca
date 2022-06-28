@@ -134,7 +134,7 @@ def joint_vae_class_main():
     return pl_module, metrics
 
 
-def joint_bto_main():
+def joint_bto_main(checkpoint=None):
     """Train and val (sim) and test (real)"""
     from torch.utils.data import Dataset, DataLoader
     import numpy as np
@@ -157,39 +157,52 @@ def joint_bto_main():
 
     test_dataset = ExpDataset()
     test_dataloader = DataLoader(test_dataset, batch_size=len(test_dataset))
-    cnn = EnsembleCNN(
-        ensemble_size=10,
-        filters=[8, 8, 4],
-        kernel_sizes=[5, 5, 5],
-        strides=[2, 2, 2],
-        pool_sizes=[1, 1, 1],
-        n_classes=4,
-        ReLU_alpha=0.2,
-        dense_dropout=0.4,
-    )
-    encoder = CNNEncoder(
-        input_length=3488,
-        latent_dim=2,
-        filters=(8, 8, 4),
-        kernel_sizes=(5, 5, 5),
-        strides=(2, 2, 2),
-        pool_sizes=(1, 1, 1),
-    )
-    decoder = CNNDecoder.from_encoder(encoder)
 
-    vae = VAE(encoder, decoder)
-    pl_module = JointVAEClassifierModule(
-        cnn, vae, classification_lr=0.0002, vae_lr=0.0002, kl_weight=1e-2
-    )
+    if checkpoint is None:
+        cnn = EnsembleCNN(
+            ensemble_size=10,
+            filters=[8, 8, 4],
+            kernel_sizes=[5, 5, 5],
+            strides=[2, 2, 2],
+            pool_sizes=[1, 1, 1],
+            n_classes=4,
+            ReLU_alpha=0.2,
+            dense_dropout=0.4,
+        )
+        encoder = CNNEncoder(
+            input_length=3488,
+            latent_dim=2,
+            filters=(8, 8, 4),
+            kernel_sizes=(5, 5, 5),
+            strides=(2, 2, 2),
+            pool_sizes=(1, 1, 1),
+        )
+        decoder = CNNDecoder.from_encoder(encoder)
+
+        vae = VAE(encoder, decoder)
+        # torch.save(vae, "/tmp/vae.torch")
+        pl_module = JointVAEClassifierModule(
+            cnn, vae, classification_lr=0.0002, vae_lr=0.0002, kl_weight=1e-2
+        )
+    else:
+        ckpt = torch.load(checkpoint)
+        cnn = EnsembleCNN(**ckpt["hyper_parameters"]["classifier_hparams"])
+        encoder = CNNEncoder(**ckpt["hyper_parameters"]["encoder_hparams"])
+        decoder = CNNDecoder(**ckpt["hyper_parameters"]["decoder_hparams"])
+        vae = VAE(encoder, decoder)
+        pl_module = JointVAEClassifierModule.load_from_checkpoint(
+            checkpoint, classification_model=cnn, vae_model=vae
+        )
 
     metrics = dynamic_training(
         pl_module,
-        max_epochs=10,
+        max_epochs=2,
         gpus=[0],
+        metric_monitor="val_classification_loss",
         batch_size=16,
-        num_workers=16,
-        batch_per_train_epoch=100,
-        batch_per_val_epoch=10,
+        num_workers=32,
+        prefetch_factor=8,
+        batch_per_train_epoch=50,  # 500--1000
         cif_paths=cif_paths,
         param_dict=param_dict,
         shape_limit=shape_limit,

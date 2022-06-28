@@ -65,7 +65,7 @@ class CNNEncoder(nn.Module):
         self.filters = tuple(filters)
         self.kernel_sizes = tuple(kernel_sizes)
         self.strides = tuple(strides)
-        self.pool_sizes = tuple(strides)
+        self.pool_sizes = tuple(pool_sizes)
         self.dropout = dropout
 
         current_length = input_length
@@ -99,6 +99,21 @@ class CNNEncoder(nn.Module):
 
         self._last_convolutional_shape = (channels[-1], current_length)
 
+    @property
+    def hparams(self) -> dict:
+        return {
+            key: getattr(self, key)
+            for key in (
+                "input_length",
+                "latent_dim",
+                "filters",
+                "kernel_sizes",
+                "strides",
+                "pool_sizes",
+                "dropout",
+            )
+        }
+
     def forward(self, x):
         """Remove flattening of single dim"""
         x = self.net(x).view(-1, self.latent_dim, 2)
@@ -125,6 +140,15 @@ class CNNDecoder(nn.Module):
         dropout: float = 0.0,
     ):
         super().__init__()
+        self.latent_dim = latent_dim
+        self.expansive_shape = expansive_shape
+        self.filters = tuple(filters)
+        self.kernel_sizes = tuple(kernel_sizes)
+        self.strides = tuple(strides)
+        self.upsample_sizes = tuple(upsample_sizes)
+        self.output_paddings = tuple(output_paddings)
+        self.dropout = dropout
+
         channels = list(filters) + [1]
         current_length = expansive_shape[0] * expansive_shape[1]
         self.track_len = []
@@ -187,6 +211,22 @@ class CNNDecoder(nn.Module):
             layers.append(nn.Dropout(dropout))
 
         self.net = nn.Sequential(*layers)
+
+    @property
+    def hparams(self) -> dict:
+        return {
+            key: getattr(self, key)
+            for key in (
+                "latent_dim",
+                "expansive_shape",
+                "filters",
+                "kernel_sizes",
+                "strides",
+                "upsample_sizes",
+                "output_paddings",
+                "dropout",
+            )
+        }
 
     @staticmethod
     def devconv_output_len(l_in, kernel_size, stride, padding, output_padding=0):

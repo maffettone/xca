@@ -41,6 +41,15 @@ class GenericCNNModel(nn.Module):
         dense_dropout: float = 0.0,
     ):
         super().__init__()
+        self.filters = filters
+        self.kernel_sizes = kernel_sizes
+        self.strides = strides
+        self.pool_sizes = pool_sizes
+        self.n_classes = n_classes
+        self.ReLU_alpha = ReLU_alpha
+        self.dense_dims = dense_dims
+        self.dense_dropout = dense_dropout
+
         channels = [1] + list(filters)
         layers = [
             ConvSubUnit(
@@ -68,6 +77,22 @@ class GenericCNNModel(nn.Module):
         self.net = nn.Sequential(*layers)
         self.n_classes = n_classes
 
+    @property
+    def hparams(self) -> dict:
+        return {
+            key: getattr(self, key)
+            for key in (
+                "filters",
+                "kernel_sizes",
+                "strides",
+                "pool_sizes",
+                "n_classes",
+                "ReLU_alpha",
+                "dense_dims",
+                "dense_dropout",
+            )
+        }
+
     def forward(self, x):
         if self.n_classes == 1:
             return self.net(x)[..., 0]
@@ -77,9 +102,16 @@ class GenericCNNModel(nn.Module):
 class EnsembleCNN(nn.Module):
     def __init__(self, ensemble_size: int, *args, **kwargs):
         super().__init__()
+        self.ensemble_size = ensemble_size
         self.sub_nets = nn.ModuleList(
             [GenericCNNModel(*args, **kwargs) for _ in range(ensemble_size)]
         )
+
+    @property
+    def hparams(self):
+        d = {"ensemble_size": self.ensemble_size}
+        d.update(self.sub_nets[0].hparams)
+        return d
 
     def forward(self, x):
         ys = [net(x) for net in self.sub_nets]
