@@ -122,6 +122,7 @@ class DynamicDataModule(LightningDataModule):
         batch_per_train_epoch: int = 100,
         batch_per_val_epoch: int = 10,
         prefetch_factor: int = 2,
+        exp_dataloader: Optional[DataLoader] = None,
         **kwargs
     ):
         """
@@ -139,6 +140,8 @@ class DynamicDataModule(LightningDataModule):
             size is used to determine the artificial length of an epoch.
         prefetch_factor : int
             Prefetch factor for the DataLoaders
+        exp_dataloader : DataLoader
+            Optional data loader for validating against experimental data
         kwargs
             keyword arguments passed to DynamicTrainDataset initialization
         """
@@ -153,6 +156,7 @@ class DynamicDataModule(LightningDataModule):
         self.val = DynamicTrainingDataset(
             epoch_len=batch_per_val_epoch * batch_size, **kwargs
         )
+        self.exp_dataloader = exp_dataloader
 
     def train_dataloader(self):
         return DataLoader(
@@ -163,9 +167,12 @@ class DynamicDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        return DataLoader(
-            self.val,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            prefetch_factor=self.prefetch_factor,
-        )
+        if self.exp_dataloader is None:
+            return DataLoader(
+                self.val,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                prefetch_factor=self.prefetch_factor,
+            )
+        else:
+            return self.exp_dataloader

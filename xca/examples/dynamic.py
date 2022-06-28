@@ -24,9 +24,13 @@ kwargs = {
     "sample_height": (-0.2, 0.2),
     "march_range": (0.8, 1.0),
 }
-cif_paths = list(
-    (Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO/").glob("*.cif")
-)
+# Forcing Order with respect to T
+cif_paths = [
+    Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "rhomb.cif",
+    Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "ortho.cif",
+    Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "tetra.cif",
+    Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "cubic.cif",
+]
 shape_limit = 1e-1
 # END XRD PARAMETERS #
 
@@ -125,6 +129,71 @@ def joint_vae_class_main():
         cif_paths=cif_paths,
         param_dict=param_dict,
         shape_limit=shape_limit,
+        **kwargs,
+    )
+    return pl_module, metrics
+
+
+def joint_bto_main():
+    """Train and val (sim) and test (real)"""
+    from torch.utils.data import Dataset, DataLoader
+    import numpy as np
+    import torch
+
+    class ExpDataset(Dataset):
+        def __init__(self, path=None):
+            if path is None:
+                path = Path(__file__).parent / "data"
+            self.x = torch.tensor(
+                np.load(path / "bto_spectra.npy") * 2 - 1, dtype=torch.float
+            )
+            self.y = torch.tensor(np.load(path / "bto_classes.npy"), dtype=torch.long)
+
+        def __len__(self):
+            return self.y.shape[0]
+
+        def __getitem__(self, idx):
+            return self.x[idx, ...][None, ...], self.y[idx]
+
+    test_dataset = ExpDataset()
+    test_dataloader = DataLoader(test_dataset, batch_size=len(test_dataset))
+    cnn = EnsembleCNN(
+        ensemble_size=10,
+        filters=[8, 8, 4],
+        kernel_sizes=[5, 5, 5],
+        strides=[2, 2, 2],
+        pool_sizes=[1, 1, 1],
+        n_classes=4,
+        ReLU_alpha=0.2,
+        dense_dropout=0.4,
+    )
+    encoder = CNNEncoder(
+        input_length=3488,
+        latent_dim=2,
+        filters=(8, 8, 4),
+        kernel_sizes=(5, 5, 5),
+        strides=(2, 2, 2),
+        pool_sizes=(1, 1, 1),
+    )
+    decoder = CNNDecoder.from_encoder(encoder)
+
+    vae = VAE(encoder, decoder)
+    pl_module = JointVAEClassifierModule(
+        cnn, vae, classification_lr=0.0002, vae_lr=0.0002, kl_weight=1e-2
+    )
+
+    metrics = dynamic_training(
+        pl_module,
+        max_epochs=10,
+        gpus=[0],
+        batch_size=16,
+        num_workers=16,
+        batch_per_train_epoch=100,
+        batch_per_val_epoch=10,
+        cif_paths=cif_paths,
+        param_dict=param_dict,
+        shape_limit=shape_limit,
+        exp_dataloader=test_dataloader,
         **kwargs,
     )
     return pl_module, metrics
