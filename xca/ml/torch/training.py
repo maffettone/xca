@@ -310,7 +310,7 @@ def dynamic_training(
 
     if gpus is None:
         gpus = [0] if torch.cuda.is_available() else None
-    wandb_logger = WandbLogger(project="XCA", log_model="all")
+    wandb_logger = WandbLogger(project="proj-xca", log_model="all")
     checkpoint_callback = ModelCheckpoint(
         monitor=metric_monitor,
         mode="min" if "loss" in metric_monitor else "max",
