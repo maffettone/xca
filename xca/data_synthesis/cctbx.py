@@ -604,6 +604,7 @@ def create_complete_profile(
             )
         )
     )
+    params["q"] = (4 * np.pi / wavelength) * np.sin(x * np.pi / 360.0)
     del params["structure"]
     da = xr.DataArray(y, coords={"2theta": x}, dims=["2theta"], attrs=params)
 

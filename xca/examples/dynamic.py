@@ -14,8 +14,8 @@ param_dict = {
     "noise_std": 5e-4,
     "instrument_radius": 1065.8822732979447,
     "theta_m": 0.0,
-    "2theta_min": 0.011231808788013649,
-    "2theta_max": 24.853167100343246,
+    "tth_min": 0.011231808788013649,
+    "tth_max": 24.853167100343246,
     "n_datapoints": 3488,
 }
 kwargs = {
@@ -182,7 +182,7 @@ def joint_bto_main(checkpoint=None):
         vae = VAE(encoder, decoder)
         # torch.save(vae, "/tmp/vae.torch")
         pl_module = JointVAEClassifierModule(
-            cnn, vae, classification_lr=0.0002, vae_lr=0.0002, kl_weight=1e-2
+            cnn, vae, classification_lr=0.0002, vae_lr=0.0002, kl_weight=1e-4
         )
     else:
         ckpt = torch.load(checkpoint)
@@ -196,13 +196,13 @@ def joint_bto_main(checkpoint=None):
 
     metrics = dynamic_training(
         pl_module,
-        max_epochs=2,
+        max_epochs=100,
         gpus=[0],
         metric_monitor="val_classification_loss",
         batch_size=16,
         num_workers=32,
         prefetch_factor=8,
-        batch_per_train_epoch=50,  # 500--1000
+        batch_per_train_epoch=100,
         cif_paths=cif_paths,
         param_dict=param_dict,
         shape_limit=shape_limit,
