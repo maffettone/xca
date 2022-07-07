@@ -66,7 +66,7 @@ class DynamicTrainingDataset(Dataset):
         """
         self.param_dict = param_dict
         self.wavelength = param_dict["wavelength"]
-        self.tth_range = (param_dict["2theta_min"], param_dict["2theta_max"])
+        self.tth_range = (param_dict["tth_min"], param_dict["tth_maxx"])
         self.phases = [path.stem for path in cif_paths]
         self.cifs = {path.stem: path for path in cif_paths}
         self.reflections = log_reflections(
