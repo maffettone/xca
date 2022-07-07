@@ -31,7 +31,7 @@ cif_paths = [
     Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "tetra.cif",
     Path(__file__).parent / "arxiv200800283" / "cifs-BaTiO" / "cubic.cif",
 ]
-shape_limit = 1e-1
+shape_limit = 1e-2
 # END XRD PARAMETERS #
 
 
@@ -200,9 +200,9 @@ def joint_bto_main(checkpoint=None):
         gpus=[0],
         metric_monitor="val_classification_loss",
         batch_size=16,
-        num_workers=32,
+        num_workers=16,
         prefetch_factor=8,
-        batch_per_train_epoch=100,
+        batch_per_train_epoch=500,
         cif_paths=cif_paths,
         param_dict=param_dict,
         shape_limit=shape_limit,
