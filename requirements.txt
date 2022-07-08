@@ -2,6 +2,6 @@
 xarray
 pandas
 netCDF4
-torch<=1.9.1
+torch
 pytorch-lightning
 wandb

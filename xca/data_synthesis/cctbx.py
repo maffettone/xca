@@ -2,6 +2,7 @@
 Python wrapping for the mass production of synthetic XRD patterns.
 This module utilizes the cctbx and its features and nomenclature.
 """
+import cctbx.uctbx
 import numpy as np
 import xarray as xr
 from math import sqrt, cos, sin, radians
@@ -117,6 +118,26 @@ def calc_structure_factor(struct, wavelength=1.5406):
 
     f_calc = struct.structure_factors(d_min=wavelength / 2).f_calc()
     return f_calc
+
+
+def apply_isotropic_expansion(struct, fractional_expansion):
+    """
+    Routine to expand/contract the lattice of the structure in the data class.
+    Changes structure in place.
+
+    Parameters
+    ----------
+    struct : cctbx.xray.structure.structure
+    fractional_expansion : float
+        How much to isotropically expand or contract the unit cell.
+        A sensible value here might be between [-0.05, 0.05] for a 5% expansion or contraction.
+    """
+    old_cell = struct.unit_cell().parameters()
+    factor = 1.0 + fractional_expansion
+    new_cell = cctbx.uctbx.unit_cell(
+        [x * factor for x in old_cell[:3]] + [x for x in old_cell[3:]]
+    )
+    struct._unit_cell = new_cell
 
 
 def apply_additional_debye_waller(f_calc, debye_waller_factors):
@@ -510,6 +531,7 @@ def create_complete_profile(
     debye_waller_factors=(),
     extinction_correction_x=0.0,
     noise_std=0.0,
+    isotropic_expansion=0.0,
     normalize=True,
     verbose=False,
     **kwargs
@@ -542,6 +564,9 @@ def create_complete_profile(
         Greater than 1 would indicate needles not plates, and should not be used.
     noise_std: float
         Normally distributed noise is applied with this standard deviation if greater than 0.
+    isotropic_expansion : float
+        How much to isotropically expand or contract the unit cell.
+        A sensible value here might be between [-0.05, 0.05] for a 5% expansion or contraction.
     theta_m: float
     debye_waller_factors: dict
     extinction_correction_x: float
@@ -563,6 +588,7 @@ def create_complete_profile(
 
     # Load cif
     data = load_cif(str(input_cif))
+    apply_isotropic_expansion(data["structure"], isotropic_expansion)
     # Calculate structure factor as cctbx miller array
     sf = calc_structure_factor(data["structure"], wavelength=wavelength)
     # Apply additional Debeye Waller factor and extinction correction to miller array
